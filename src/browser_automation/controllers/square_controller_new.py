@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 import os
 import json
+import asyncio
 from playwright.async_api import Page, TimeoutError
 
 from ..core.web_component_handler import WebComponentHandler
@@ -63,24 +64,76 @@ class SquareController:
     async def wait_for_square_components(self) -> None:
         """Wait for Square-specific web components."""
         try:
+            # First wait for the form wrapper
+            await self.page.wait_for_selector(
+                '[data-testid="login-form-wrapper"]',
+                state='visible',
+                timeout=30000
+            )
+            
+            # Then wait for specific web components
             await self.web_components.wait_for_components([
                 'market-button',
                 'market-input-text'
             ])
+            
+            # Additional wait for JavaScript initialization
+            await self.page.wait_for_function("""
+                () => {
+                    return window.customElements &&
+                           document.querySelector('market-button') &&
+                           document.querySelector('market-input-text') &&
+                           !document.querySelector('.noscript');
+                }
+            """)
+            
             logger.debug("Square web components are ready")
-        except WebComponentError as e:
+            
+        except Exception as e:
             logger.error(f"Failed waiting for Square components: {e}")
-            raise
+            raise WebComponentError(
+                message="Failed to initialize Square components",
+                component="market-button, market-input-text",
+                details={'error': str(e)}
+            )
             
     async def fill_email(self, email: str) -> None:
         """Fill in the email field."""
         try:
-            email_input = await self.locator.find_element({
-                'id': 'mpui-combo-field-input'
-            })
-            await email_input.fill(email)
+            # Wait for the input field
+            await self.page.wait_for_selector(
+                '#mpui-combo-field-input',
+                state='visible',
+                timeout=30000
+            )
+            
+            # Fill using JavaScript for reliability
+            await self.page.evaluate(f"""
+                () => {{
+                    const input = document.querySelector('#mpui-combo-field-input');
+                    if (input) {{
+                        input.value = "{email}";
+                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    }}
+                }}
+            """)
+            
+            # Verify the value was set
+            value = await self.page.evaluate("""
+                () => document.querySelector('#mpui-combo-field-input').value
+            """)
+            
+            if value != email:
+                raise InteractionError(
+                    message="Failed to set email value",
+                    action="fill_email",
+                    details={'expected': email, 'actual': value}
+                )
+                
             logger.debug(f"Filled email: {email}")
-        except ElementNotFoundError as e:
+            
+        except Exception as e:
             logger.error(f"Failed to fill email: {e}")
             raise InteractionError(
                 message="Failed to fill email field",
@@ -91,25 +144,90 @@ class SquareController:
     async def click_continue(self) -> None:
         """Click the continue button."""
         try:
-            # Try multiple selectors for the continue button
-            selectors = [
-                {'test_id': 'login-email-next-button'},
-                {'role': 'button', 'text': 'Continue'},
-                {'tag': 'market-button', 'test_id': 'login-email-next-button'}
+            # Wait for button to be ready
+            await self.page.wait_for_selector(
+                '[data-testid="login-email-next-button"]',
+                state='visible',
+                timeout=30000
+            )
+            
+            # Get button info before clicking
+            button_info = await self.page.evaluate("""
+                () => {
+                    const button = document.querySelector('[data-testid="login-email-next-button"]');
+                    return {
+                        isVisible: button.offsetParent !== null,
+                        isEnabled: !button.disabled,
+                        hasClickHandler: button.onclick !== null,
+                        rect: button.getBoundingClientRect()
+                    };
+                }
+            """)
+            
+            logger.debug(f"Continue button info: {button_info}")
+            
+            # Try multiple click strategies
+            strategies = [
+                # 1. Direct click
+                lambda: self.page.click('[data-testid="login-email-next-button"]'),
+                
+                # 2. JavaScript click
+                lambda: self.page.evaluate("""
+                    () => {
+                        const button = document.querySelector('[data-testid="login-email-next-button"]');
+                        if (button) {
+                            button.click();
+                        }
+                    }
+                """),
+                
+                # 3. Dispatch click event
+                lambda: self.page.evaluate("""
+                    () => {
+                        const button = document.querySelector('[data-testid="login-email-next-button"]');
+                        if (button) {
+                            const event = new MouseEvent('click', {
+                                bubbles: true,
+                                cancelable: true,
+                                view: window
+                            });
+                            button.dispatchEvent(event);
+                        }
+                    }
+                """),
+                
+                # 4. Click with position
+                lambda: self.page.mouse.click(
+                    button_info['rect']['x'] + button_info['rect']['width'] / 2,
+                    button_info['rect']['y'] + button_info['rect']['height'] / 2
+                )
             ]
             
-            for selector in selectors:
+            for i, strategy in enumerate(strategies):
                 try:
-                    button = await self.locator.find_element(selector)
-                    await button.click()
-                    logger.debug(f"Clicked continue button with selector: {selector}")
-                    return
-                except ElementNotFoundError:
+                    await strategy()
+                    logger.debug(f"Click strategy {i+1} succeeded")
+                    
+                    # Wait for navigation or state change
+                    await asyncio.sleep(1)  # Brief pause
+                    
+                    # Check if we've moved to password state
+                    has_password = await self.page.evaluate("""
+                        () => document.querySelector('input[type="password"]') !== null
+                    """)
+                    
+                    if has_password:
+                        logger.debug("Successfully moved to password state")
+                        return
+                        
+                except Exception as e:
+                    logger.debug(f"Click strategy {i+1} failed: {e}")
                     continue
                     
-            raise ElementNotFoundError(
-                message="Continue button not found with any selector",
-                selector=str(selectors)
+            raise InteractionError(
+                message="All click strategies failed",
+                action="click_continue",
+                details={'button_info': button_info}
             )
             
         except Exception as e:
@@ -123,12 +241,28 @@ class SquareController:
     async def fill_password(self, password: str) -> None:
         """Fill in the password field."""
         try:
-            password_input = await self.locator.find_element({
-                'type': 'password'
-            })
-            await password_input.fill(password)
+            # Wait for password field
+            await self.page.wait_for_selector(
+                'input[type="password"]',
+                state='visible',
+                timeout=30000
+            )
+            
+            # Fill using JavaScript
+            await self.page.evaluate(f"""
+                () => {{
+                    const input = document.querySelector('input[type="password"]');
+                    if (input) {{
+                        input.value = "{password}";
+                        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    }}
+                }}
+            """)
+            
             logger.debug("Filled password field")
-        except ElementNotFoundError as e:
+            
+        except Exception as e:
             logger.error(f"Failed to fill password: {e}")
             raise InteractionError(
                 message="Failed to fill password field",
@@ -139,12 +273,26 @@ class SquareController:
     async def click_sign_in(self) -> None:
         """Click the sign in button."""
         try:
-            button = await self.locator.find_element({
-                'test_id': 'sign-in-button'
-            })
-            await button.click()
+            # Wait for sign in button
+            await self.page.wait_for_selector(
+                '[data-testid="sign-in-button"]',
+                state='visible',
+                timeout=30000
+            )
+            
+            # Click using JavaScript
+            await self.page.evaluate("""
+                () => {
+                    const button = document.querySelector('[data-testid="sign-in-button"]');
+                    if (button) {
+                        button.click();
+                    }
+                }
+            """)
+            
             logger.debug("Clicked sign in button")
-        except ElementNotFoundError as e:
+            
+        except Exception as e:
             logger.error(f"Failed to click sign in: {e}")
             raise InteractionError(
                 message="Failed to click sign in button",
@@ -155,12 +303,14 @@ class SquareController:
     async def verify_login_success(self) -> bool:
         """Verify successful login."""
         try:
-            await self.locator.wait_for_element({
-                'test_id': 'dashboard-container'
-            })
+            await self.page.wait_for_selector(
+                '[data-testid="dashboard-container"]',
+                state='visible',
+                timeout=30000
+            )
             logger.info("Login successful - dashboard found")
             return True
-        except ElementNotFoundError:
+        except Exception:
             logger.error("Login verification failed - dashboard not found")
             return False
             
