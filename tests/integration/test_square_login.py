@@ -1,7 +1,7 @@
 """Integration tests for Square login automation."""
 import pytest
 from playwright.async_api import Page
-from ...src.browser_automation.controllers.square_controller_new import SquareController
+from browser_automation.controllers.square_controller_new import SquareController
 
 
 @pytest.mark.integration
