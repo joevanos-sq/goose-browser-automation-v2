@@ -97,6 +97,47 @@ class SquareController:
                 details={'error': str(e)}
             )
             
+    async def is_recaptcha_present(self) -> bool:
+        """Check if reCAPTCHA is present."""
+        try:
+            # Check for reCAPTCHA iframe
+            has_iframe = await self.page.evaluate("""
+                () => {
+                    const iframes = document.querySelectorAll('iframe');
+                    return Array.from(iframes).some(iframe => 
+                        iframe.src.includes('recaptcha')
+                    );
+                }
+            """)
+            
+            # Check for reCAPTCHA elements
+            has_elements = await self.page.evaluate("""
+                () => {
+                    return document.querySelector('.grecaptcha-badge') !== null;
+                }
+            """)
+            
+            return has_iframe or has_elements
+            
+        except Exception as e:
+            logger.warning(f"Failed to check for reCAPTCHA: {e}")
+            return False
+            
+    async def handle_recaptcha(self) -> bool:
+        """
+        Handle reCAPTCHA challenge.
+        
+        This is a placeholder - in a real implementation, you would:
+        1. Use a CAPTCHA solving service
+        2. Or implement visual/audio CAPTCHA solving
+        3. Or use a browser profile that doesn't trigger CAPTCHA
+        """
+        if await self.is_recaptcha_present():
+            logger.warning("reCAPTCHA detected - this needs to be handled")
+            await self.save_debug_screenshot("recaptcha_detected")
+            return False
+        return True
+        
     async def fill_email(self, email: str) -> None:
         """Fill in the email field."""
         try:
@@ -211,6 +252,11 @@ class SquareController:
                     # Wait for navigation or state change
                     await asyncio.sleep(1)  # Brief pause
                     
+                    # Check for reCAPTCHA
+                    if await self.is_recaptcha_present():
+                        logger.warning("reCAPTCHA detected after click")
+                        return
+                        
                     # Check if we've moved to password state
                     has_password = await self.page.evaluate("""
                         () => document.querySelector('input[type="password"]') !== null
@@ -292,6 +338,10 @@ class SquareController:
             
             logger.debug("Clicked sign in button")
             
+            # Check for reCAPTCHA
+            if await self.is_recaptcha_present():
+                logger.warning("reCAPTCHA detected after sign in")
+                
         except Exception as e:
             logger.error(f"Failed to click sign in: {e}")
             raise InteractionError(
@@ -355,6 +405,11 @@ class SquareController:
             await self.click_continue()
             await self.save_debug_screenshot("03_after_continue")
             
+            # Check for reCAPTCHA
+            if await self.is_recaptcha_present():
+                logger.warning("reCAPTCHA detected - cannot proceed")
+                return False
+                
             # Fill password
             logger.info("Entering password...")
             await self.fill_password(password)
@@ -365,6 +420,11 @@ class SquareController:
             await self.click_sign_in()
             await self.save_debug_screenshot("05_after_signin")
             
+            # Check for reCAPTCHA again
+            if await self.is_recaptcha_present():
+                logger.warning("reCAPTCHA detected after sign in - cannot proceed")
+                return False
+                
             # Verify login
             return await self.verify_login_success()
             
