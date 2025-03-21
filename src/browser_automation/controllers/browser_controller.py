@@ -28,24 +28,34 @@ class BrowserController:
             self._playwright = await async_playwright().start()
             
             try:
-                logger.info("Launching Chrome Canary...")
+                logger.info("Attempting to launch Chrome Canary...")
                 self._browser = await self._playwright.chromium.launch(
                     channel="chrome-canary",
-                    headless=headless
+                    headless=headless,
+                    args=['--start-maximized']  # Start with maximized window
                 )
+                logger.info("Successfully launched Chrome Canary")
             except Exception as e:
-                logger.warning(f"Failed to launch Chrome Canary: {e}, falling back to Chrome")
+                logger.error(f"Failed to launch Chrome Canary: {str(e)}")
+                logger.info("Attempting to fall back to regular Chrome...")
                 self._browser = await self._playwright.chromium.launch(
-                    headless=headless
+                    headless=headless,
+                    args=['--start-maximized']  # Start with maximized window
                 )
+                logger.info("Successfully launched regular Chrome")
                 
             logger.info("Creating new page...")
             self._page = await self._browser.new_page()
             
+            # Set viewport size
+            await self._page.set_viewport_size({"width": 1920, "height": 1080})
+            
         except Exception as e:
-            logger.error(f"Failed to launch browser: {e}")
+            logger.error(f"Failed to launch browser: {str(e)}")
             await self.cleanup()
-            raise
+            raise McpError(
+                ErrorData(INTERNAL_ERROR, f"Failed to launch browser: {str(e)}")
+            )
             
     async def navigate(self, url: str) -> None:
         """Navigate to URL."""
