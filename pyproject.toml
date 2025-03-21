@@ -19,10 +19,20 @@ browser-automation = "browser_automation.server:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.pylance]
-reportAttributeAccessIssue = true
-
 [tool.pyright]
 include = ["src"]
+extraPaths = ["src"]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
+useLibraryCodeForTypes = true
+
+[tool.pylance]
+python.analysis.extraPaths = ["src"]
+python.analysis.typeCheckingMode = "basic"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["browser_automation"]
+
+[tool.setuptools.package-data]
+browser_automation = ["py.typed"]

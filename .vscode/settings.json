@@ -1,14 +1,6 @@
 {
-    "python.analysis.diagnosticSeverityOverrides": {
-        "reportOptionalMemberAccess": "none",
-        "reportGeneralTypeIssues": "none"
-    },
-    "python.analysis.exclude": [
-        "**/site-packages/**"
-    ],
+    "python.analysis.extraPaths": ["./src"],
     "python.analysis.typeCheckingMode": "basic",
-    "[python]": {
-        "editor.formatOnSave": true,
-        "editor.defaultFormatter": "ms-python.black-formatter"
-    }
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.autoImportCompletions": true
 }
