@@ -19,7 +19,10 @@ browser-automation = "browser_automation.server:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[[tool.poetry.source]]
-name = "artifactory"
-url = "https://artifactory.global.square/artifactory/api/pypi/block-pypi/simple"
-priority = "primary"
+[tool.pylance]
+reportAttributeAccessIssue = true
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
