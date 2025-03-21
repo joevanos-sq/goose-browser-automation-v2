@@ -4,9 +4,9 @@ from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, INTERNAL_ERROR, INVALID_PARAMS
 from typing import Dict, Any, Optional
 
-# Fix the import path to use relative import
-from .controllers.browser_controller import BrowserController
-from .controllers.square_controller import SquareController
+# Fix import paths by using absolute imports
+from browser_automation.controllers.browser_controller import BrowserController
+from browser_automation.controllers.square_controller import SquareController
 
 # Initialize controllers
 browser_controller = BrowserController()
@@ -80,7 +80,7 @@ mcp = FastMCP(
 )
 
 # Tool Implementations
-@mcp.tool()  # Keep the parentheses
+@mcp.tool()
 async def launch_browser(params: Dict[str, Any]) -> Dict[str, Any]:
     """Launch a new browser instance."""
     try:
@@ -91,37 +91,41 @@ async def launch_browser(params: Dict[str, Any]) -> Dict[str, Any]:
             "message": "Browser launched successfully"
         }
     except Exception as e:
-        raise McpError(
-            ErrorData(INTERNAL_ERROR, f"Failed to launch browser: {str(e)}")
-        )
+        # Create a new ErrorData instance
+        error_data = ErrorData(code=INTERNAL_ERROR, message=str(e))
+        raise McpError(error_data)
 
-@mcp.tool()  # Keep the parentheses
+@mcp.tool()
 async def navigate_to(params: Dict[str, Any]) -> Dict[str, Any]:
     """Navigate to a URL."""
     try:
         url = params.get("url")
         if not url:
-            raise ValueError("URL is required")
+            error_data = ErrorData(code=INVALID_PARAMS, message="URL is required")
+            raise McpError(error_data)
             
         if not browser_controller.page:
-            raise ValueError("Browser not launched. Call launch_browser first.")
+            error_data = ErrorData(code=INVALID_PARAMS, message="Browser not launched. Call launch_browser first.")
+            raise McpError(error_data)
             
         await browser_controller.navigate(url)
         return {
             "success": True,
             "message": f"Navigated to {url}"
         }
-    except ValueError as e:
-        raise McpError(ErrorData(INVALID_PARAMS, str(e)))
+    except McpError:
+        raise
     except Exception as e:
-        raise McpError(ErrorData(INTERNAL_ERROR, f"Navigation failed: {str(e)}"))
+        error_data = ErrorData(code=INTERNAL_ERROR, message=f"Navigation failed: {str(e)}")
+        raise McpError(error_data)
 
-@mcp.tool()  # Keep the parentheses
+@mcp.tool()
 async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
     """Inspect the current page content and structure."""
     try:
         if not browser_controller.page:
-            raise ValueError("Browser not launched. Call launch_browser first.")
+            error_data = ErrorData(code=INVALID_PARAMS, message="Browser not launched. Call launch_browser first.")
+            raise McpError(error_data)
             
         selector = params.get("selector", "body")
         
@@ -132,12 +136,13 @@ async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
             "success": True,
             "content": content
         }
-    except ValueError as e:
-        raise McpError(ErrorData(INVALID_PARAMS, str(e)))
+    except McpError:
+        raise
     except Exception as e:
-        raise McpError(ErrorData(INTERNAL_ERROR, f"Page inspection failed: {str(e)}"))
+        error_data = ErrorData(code=INTERNAL_ERROR, message=f"Page inspection failed: {str(e)}")
+        raise McpError(error_data)
 
-@mcp.tool()  # Keep the parentheses
+@mcp.tool()
 async def square_login(params: Dict[str, Any]) -> Dict[str, Any]:
     """Login to Square using provided credentials."""
     try:
@@ -145,10 +150,12 @@ async def square_login(params: Dict[str, Any]) -> Dict[str, Any]:
         password = params.get("password")
         
         if not email or not password:
-            raise ValueError("Email and password are required")
+            error_data = ErrorData(code=INVALID_PARAMS, message="Email and password are required")
+            raise McpError(error_data)
             
         if not browser_controller.page:
-            raise ValueError("Browser not launched. Call launch_browser first.")
+            error_data = ErrorData(code=INVALID_PARAMS, message="Browser not launched. Call launch_browser first.")
+            raise McpError(error_data)
             
         square = SquareController(browser_controller.page)
         success = await square.login(email, password)
@@ -157,10 +164,11 @@ async def square_login(params: Dict[str, Any]) -> Dict[str, Any]:
             "success": success,
             "message": "Login successful" if success else "Login failed"
         }
-    except ValueError as e:
-        raise McpError(ErrorData(INVALID_PARAMS, str(e)))
+    except McpError:
+        raise
     except Exception as e:
-        raise McpError(ErrorData(INTERNAL_ERROR, f"Login failed: {str(e)}"))
+        error_data = ErrorData(code=INTERNAL_ERROR, message=f"Login failed: {str(e)}")
+        raise McpError(error_data)
 
 def main():
     """Run the MCP server."""
