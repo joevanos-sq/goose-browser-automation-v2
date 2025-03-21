@@ -1,0 +1,25 @@
+[project]
+name = "browser-automation"
+version = "0.1.0"
+description = "Browser automation extension for Goose"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "playwright>=1.51.0",
+    "pyee>=12.0.0,<13.0.0",
+    "typing-extensions>=4.12.2",
+    "greenlet>=3.1.1"
+]
+
+[project.scripts]
+browser-automation = "browser_automation.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[[tool.poetry.source]]
+name = "artifactory"
+url = "https://artifactory.global.square/artifactory/api/pypi/block-pypi/simple"
+priority = "primary"
