@@ -4,8 +4,9 @@ from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, INTERNAL_ERROR, INVALID_PARAMS
 from typing import Dict, Any, Optional
 
-from browser_automation.controllers.browser_controller import BrowserController
-from browser_automation.controllers.square_controller import SquareController
+# Fix the import path to use relative import
+from .controllers.browser_controller import BrowserController
+from .controllers.square_controller import SquareController
 
 # Initialize controllers
 browser_controller = BrowserController()
@@ -79,7 +80,7 @@ mcp = FastMCP(
 )
 
 # Tool Implementations
-@mcp.tool()
+@mcp.tool()  # Keep the parentheses
 async def launch_browser(params: Dict[str, Any]) -> Dict[str, Any]:
     """Launch a new browser instance."""
     try:
@@ -94,7 +95,7 @@ async def launch_browser(params: Dict[str, Any]) -> Dict[str, Any]:
             ErrorData(INTERNAL_ERROR, f"Failed to launch browser: {str(e)}")
         )
 
-@mcp.tool()
+@mcp.tool()  # Keep the parentheses
 async def navigate_to(params: Dict[str, Any]) -> Dict[str, Any]:
     """Navigate to a URL."""
     try:
@@ -115,7 +116,7 @@ async def navigate_to(params: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         raise McpError(ErrorData(INTERNAL_ERROR, f"Navigation failed: {str(e)}"))
 
-@mcp.tool()
+@mcp.tool()  # Keep the parentheses
 async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
     """Inspect the current page content and structure."""
     try:
@@ -136,7 +137,7 @@ async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         raise McpError(ErrorData(INTERNAL_ERROR, f"Page inspection failed: {str(e)}"))
 
-@mcp.tool()
+@mcp.tool()  # Keep the parentheses
 async def square_login(params: Dict[str, Any]) -> Dict[str, Any]:
     """Login to Square using provided credentials."""
     try:
