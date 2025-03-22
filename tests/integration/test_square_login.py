@@ -1,56 +1,81 @@
-"""Integration tests for Square login automation."""
+"""Integration tests for Square login functionality."""
 import pytest
-from playwright.async_api import Page
-from browser_automation.controllers.square_controller_new import SquareController
+import os
+from pathlib import Path
 
+# Test credentials
+TEST_EMAIL = "joev+goosetestfree1@squareup.com"
+TEST_PASSWORD = "password"
 
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_square_login_components(page: Page):
-    """Test Square login page component detection."""
-    controller = SquareController(page)
-    
-    # Navigate to login page
-    await page.goto('https://app.squareupstaging.com/login')
-    
-    # Test web component detection
-    await controller.wait_for_square_components()
-    
-    # Test email field detection
-    await controller.locator.find_element({'id': 'mpui-combo-field-input'})
-    
-    # Test continue button detection (should find with one of the selectors)
-    found_button = False
-    selectors = [
-        {'test_id': 'login-email-next-button'},
-        {'role': 'button', 'text': 'Continue'},
-        {'tag': 'market-button', 'test_id': 'login-email-next-button'}
-    ]
-    
-    for selector in selectors:
-        if await controller.locator.is_element_present(selector):
-            found_button = True
-            break
-            
-    assert found_button, "Continue button not found with any selector"
-
-
-@pytest.mark.integration
-@pytest.mark.asyncio
-async def test_square_login_flow(page: Page):
+async def test_square_login_flow(browser):
     """Test complete Square login flow."""
-    controller = SquareController(page)
+    # Setup
+    await browser.launch_browser()
     
-    # Use test credentials
-    email = "test@example.com"
-    password = "password123"
+    # Execute login
+    success = await browser.square_login(TEST_EMAIL, TEST_PASSWORD)
     
-    # Start login flow
-    result = await controller.login(email, password)
+    # Verify
+    assert success == True
+    assert 'dashboard' in browser._page.url.lower()
+
+async def test_square_login_invalid_credentials(browser):
+    """Test Square login with invalid credentials."""
+    await browser.launch_browser()
+    success = await browser.square_login("invalid@email.com", "wrongpassword")
+    assert success == False
+
+async def test_square_login_network_conditions(browser):
+    """Test Square login under different network conditions."""
+    await browser.launch_browser()
     
-    # We expect this to fail with test credentials
-    assert not result, "Login should fail with test credentials"
+    # Test with slow connection
+    await browser._page.route('**/*', lambda route: route.continue_(
+        delay=1000  # Add 1s delay to all requests
+    ))
     
-    # But we should have gotten to the password screen
-    assert await controller.locator.is_element_present({'type': 'password'}), \
-        "Password field not found"
+    success = await browser.square_login(TEST_EMAIL, TEST_PASSWORD)
+    assert success == True
+
+@pytest.mark.skip(reason="For manual verification only")
+async def test_square_login_debug_mode(browser):
+    """Test Square login with debug mode and screenshots."""
+    # Setup
+    screenshots_dir = Path("test_screenshots")
+    screenshots_dir.mkdir(exist_ok=True)
+    
+    await browser.launch_browser()
+    
+    try:
+        # Navigate to login page
+        await browser._page.goto('https://app.squareupstaging.com/login')
+        await browser._page.screenshot(path=str(screenshots_dir / "1_initial_page.png"))
+        
+        # Enter email
+        email_input = browser._page.get_by_role('textbox', name='Email or phone number')
+        await email_input.fill(TEST_EMAIL)
+        await browser._page.screenshot(path=str(screenshots_dir / "2_email_entered.png"))
+        
+        # Click continue
+        continue_button = browser._page.get_by_role('button', name='Continue')
+        await continue_button.click()
+        await browser._page.screenshot(path=str(screenshots_dir / "3_continue_clicked.png"))
+        
+        # Enter password
+        password_input = browser._page.get_by_role('textbox', name='Password')
+        await password_input.fill(TEST_PASSWORD)
+        await browser._page.screenshot(path=str(screenshots_dir / "4_password_entered.png"))
+        
+        # Click sign in
+        sign_in_button = browser._page.get_by_role('button', name='Sign in')
+        await sign_in_button.click()
+        await browser._page.screenshot(path=str(screenshots_dir / "5_sign_in_clicked.png"))
+        
+        # Wait for navigation
+        await browser._page.wait_for_load_state('networkidle')
+        await browser._page.screenshot(path=str(screenshots_dir / "6_final_state.png"))
+        
+        assert 'dashboard' in browser._page.url.lower()
+    except Exception as e:
+        await browser._page.screenshot(path=str(screenshots_dir / "error_state.png"))
+        raise e

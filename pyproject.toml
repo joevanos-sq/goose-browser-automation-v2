@@ -2,14 +2,13 @@
 name = "browser-automation"
 version = "0.1.0"
 description = "Browser automation extension for Goose"
-readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
-    "mcp[cli]>=1.2.0",
-    "playwright>=1.51.0",
-    "pyee>=12.0.0,<13.0.0",
-    "typing-extensions>=4.12.2",
-    "greenlet>=3.1.1"
+    "playwright>=1.41.0",
+    "mcp>=1.5.0",
+    "pydantic>=2.10.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0"
 ]
 
 [project.scripts]
@@ -18,21 +17,3 @@ browser-automation = "browser_automation.server:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.pyright]
-include = ["src"]
-extraPaths = ["src"]
-pythonVersion = "3.11"
-typeCheckingMode = "basic"
-useLibraryCodeForTypes = true
-
-[tool.pylance]
-python.analysis.extraPaths = ["src"]
-python.analysis.typeCheckingMode = "basic"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["browser_automation"]
-
-[tool.setuptools.package-data]
-browser_automation = ["py.typed"]

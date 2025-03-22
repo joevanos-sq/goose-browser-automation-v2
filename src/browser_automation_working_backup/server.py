@@ -74,14 +74,6 @@ mcp = FastMCP(
                 },
                 "required": ["email", "password"]
             }
-        },
-        {
-            "name": "close_browser",
-            "description": "Close the browser and clean up resources",
-            "parameters": {
-                "type": "object",
-                "properties": {}
-            }
         }
     ]
 )
@@ -92,10 +84,10 @@ async def launch_browser(params: Dict[str, Any]) -> Dict[str, Any]:
     """Launch a new browser instance."""
     try:
         headless = params.get("headless", False)
-        success = await browser_controller.launch(headless=headless)
+        await browser_controller.launch(headless=headless)
         return {
-            "success": success,
-            "message": "Browser launched successfully" if success else "Failed to launch browser"
+            "success": True,
+            "message": "Browser launched successfully"
         }
     except Exception as e:
         raise McpError(
@@ -113,10 +105,10 @@ async def navigate_to(params: Dict[str, Any]) -> Dict[str, Any]:
         if not browser_controller.page:
             raise ValueError("Browser not launched. Call launch_browser first.")
             
-        success = await browser_controller.navigate(url)
+        await browser_controller.navigate(url)
         return {
-            "success": success,
-            "message": f"Navigated to {url}" if success else f"Failed to navigate to {url}"
+            "success": True,
+            "message": f"Navigated to {url}"
         }
     except ValueError as e:
         raise McpError(ErrorData(INVALID_PARAMS, str(e)))
@@ -168,18 +160,6 @@ async def square_login(params: Dict[str, Any]) -> Dict[str, Any]:
         raise McpError(ErrorData(INVALID_PARAMS, str(e)))
     except Exception as e:
         raise McpError(ErrorData(INTERNAL_ERROR, f"Login failed: {str(e)}"))
-
-@mcp.tool()
-async def close_browser(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Close the browser and clean up resources."""
-    try:
-        await browser_controller.close()
-        return {
-            "success": True,
-            "message": "Browser closed successfully"
-        }
-    except Exception as e:
-        raise McpError(ErrorData(INTERNAL_ERROR, f"Failed to close browser: {str(e)}"))
 
 def main():
     """Run the MCP server."""
