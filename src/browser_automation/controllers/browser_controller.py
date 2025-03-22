@@ -1,6 +1,8 @@
 """Browser controller with Chromium support."""
+from __future__ import annotations
+
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Literal
 from playwright.async_api import async_playwright, Page, Browser, Playwright
 
 logger = logging.getLogger(__name__)
@@ -8,7 +10,7 @@ logger = logging.getLogger(__name__)
 class BrowserController:
     """Controls browser automation with Chromium."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the controller."""
         self._playwright: Optional[Playwright] = None
         self._browser: Optional[Browser] = None
@@ -25,6 +27,9 @@ class BrowserController:
         
         Args:
             headless: Whether to run browser in headless mode
+            
+        Returns:
+            bool: True if launch successful, False otherwise
         """
         try:
             self._playwright = await async_playwright().start()
@@ -49,13 +54,21 @@ class BrowserController:
         
         Args:
             url: URL to navigate to
+            
+        Returns:
+            bool: True if navigation successful, False otherwise
+            
+        Raises:
+            ValueError: If browser not launched
         """
         try:
             if not self._page:
                 raise ValueError("Browser not launched")
                 
-            await self._page.goto(url)
-            await self._page.wait_for_load_state('networkidle')
+            await self._page.goto(
+                url,
+                wait_until='networkidle'  # Using literal value
+            )
             logger.info(f"Successfully navigated to {url}")
             return True
             
@@ -63,8 +76,101 @@ class BrowserController:
             logger.error(f"Navigation failed: {str(e)}")
             return False
             
+    async def type_text(self, selector: str, text: str) -> bool:
+        """
+        Type text into an element.
+        
+        Args:
+            selector: Element selector or name
+            text: Text to type
+            
+        Returns:
+            bool: True if text entered successfully, False otherwise
+            
+        Raises:
+            ValueError: If browser not launched
+        """
+        try:
+            if not self._page:
+                raise ValueError("Browser not launched")
+                
+            # Try by role
+            element = self._page.get_by_role('textbox', name=selector)
+            if element:
+                await element.fill(text)
+                await element.press('Enter')
+                logger.info(f"Successfully typed text into {selector}")
+                return True
+                
+            # Try by placeholder
+            element = self._page.get_by_placeholder(selector)
+            if element:
+                await element.fill(text)
+                await element.press('Enter')
+                return True
+                
+            # Try direct selector
+            element = self._page.locator(selector)
+            await element.fill(text)
+            await element.press('Enter')
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to type text: {str(e)}")
+            return False
+            
+    async def click_element(self, selector: str) -> bool:
+        """
+        Click on an element.
+        
+        Args:
+            selector: Element selector or name
+            
+        Returns:
+            bool: True if click successful, False otherwise
+            
+        Raises:
+            ValueError: If browser not launched
+        """
+        try:
+            if not self._page:
+                raise ValueError("Browser not launched")
+                
+            # Try by role
+            element = self._page.get_by_role('link', name=selector)
+            if element:
+                await element.click()
+                logger.info(f"Successfully clicked {selector}")
+                return True
+                
+            # Try by text
+            element = self._page.get_by_text(selector)
+            if element:
+                await element.click()
+                return True
+                
+            # Try direct selector
+            element = self._page.locator(selector)
+            await element.click()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to click element: {str(e)}")
+            return False
+            
     async def inspect_page(self, selector: str = "body") -> Dict[str, Any]:
-        """Get current page state for debugging."""
+        """
+        Get current page state for debugging.
+        
+        Args:
+            selector: Element selector to inspect
+            
+        Returns:
+            Dict containing page state information
+            
+        Raises:
+            ValueError: If browser not launched
+        """
         if not self._page:
             raise ValueError("Browser not launched")
             
@@ -84,7 +190,12 @@ class BrowserController:
             return {"error": str(e)}
             
     async def close(self) -> None:
-        """Close browser and cleanup resources."""
+        """
+        Close browser and cleanup resources.
+        
+        Raises:
+            Exception: If cleanup fails
+        """
         try:
             if self._page:
                 await self._page.close()

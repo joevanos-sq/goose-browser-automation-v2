@@ -6,14 +6,14 @@ requires-python = ">=3.12"
 dependencies = [
     "playwright>=1.41.0",
     "mcp>=1.5.0",
-    "pydantic>=2.10.0",
     "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0"
+    "pytest-asyncio>=0.23.0",
+    "setuptools>=69.0.0"
 ]
 
 [project.scripts]
 browser-automation = "browser_automation.server:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=69.0.0"]
+build-backend = "setuptools.build_meta"

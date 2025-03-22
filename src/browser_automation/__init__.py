@@ -1,4 +1,4 @@
 """Browser automation extension for Goose."""
-from .server import main
+from importlib.metadata import version
 
-__all__ = ['main']
+__version__ = version("browser-automation")

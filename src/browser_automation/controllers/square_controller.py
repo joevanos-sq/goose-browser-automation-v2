@@ -1,4 +1,6 @@
 """Square login controller."""
+from __future__ import annotations
+
 import logging
 from playwright.async_api import Page
 
@@ -7,8 +9,13 @@ logger = logging.getLogger(__name__)
 class SquareController:
     """Controls Square-specific browser automation."""
     
-    def __init__(self, page: Page):
-        """Initialize with Playwright page."""
+    def __init__(self, page: Page) -> None:
+        """
+        Initialize with Playwright page.
+        
+        Args:
+            page: Playwright page instance
+        """
         self.page = page
         
     async def login(self, email: str, password: str) -> bool:
@@ -18,6 +25,9 @@ class SquareController:
         Args:
             email: User's email
             password: User's password
+            
+        Returns:
+            bool: True if login successful, False otherwise
         """
         try:
             logger.info("Starting Square login flow")
@@ -66,7 +76,12 @@ class SquareController:
             return False
             
     async def _verify_login(self) -> bool:
-        """Verify successful login."""
+        """
+        Verify successful login.
+        
+        Returns:
+            bool: True if login verified, False otherwise
+        """
         try:
             # Wait for URL change
             await self.page.wait_for_url(
