@@ -42,6 +42,9 @@ class InspectPageParams:
 @dataclass
 class GoogleSearchParams:
     query: str
+    click_index: Optional[int] = None
+    click_text: Optional[str] = None
+    ensure_visible: bool = True
 
 # Initialize controllers
 browser_controller = BrowserController()
@@ -71,11 +74,21 @@ async def launch_browser(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @mcp.tool()
 async def navigate_to(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Navigate to a URL."""
+    """Navigate to a URL.
+    
+    Note: For Google searches, use the google_search() function instead of navigating
+    to google.com manually. This ensures more reliable search functionality."""
     try:
         nav_params = NavigateParams(**params)
         if not browser_controller.page:
             raise ValueError("Browser not launched. Call launch_browser first.")
+            
+        # Add warning for manual Google navigation
+        if "google.com" in nav_params.url.lower():
+            logger.warning(
+                "Warning: Attempting to navigate to Google directly. "
+                "For better reliability, use the google_search() function instead."
+            )
             
         success = await browser_controller.navigate(nav_params.url)
         return {
@@ -165,12 +178,39 @@ async def close_browser(params: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Perform a Google search.
+    Perform a Google search with enhanced result handling.
     
-    A convenience method that combines navigation and search into one step.
+    This is the recommended way to perform Google searches. It handles all the necessary steps:
+    1. Navigating to google.com
+    2. Locating the search input
+    3. Entering the search query
+    4. Submitting the search
+    5. Waiting for results to load
+    6. Optionally clicking a result
+    
+    Rather than using navigate_to() and type_text() manually, always use this method
+    for Google searches as it uses reliable selectors and proper submission handling.
+    
+    Parameters:
+        query (str): The search term to look up on Google
+        click_index (int, optional): Index of result to click (1-based)
+        click_text (str, optional): Text to match in result title
+        ensure_visible (bool, optional): Whether to ensure result is in viewport before clicking
+        
+    Returns:
+        Dict containing:
+        - success (bool): Whether the search was successful
+        - message (str): Status message about the operation
+        - clicked (bool): Whether a result was successfully clicked
+        - results (list, optional): List of result titles if available
     """
     try:
+        # Validate and extract parameters
         search_params = GoogleSearchParams(**params)
+        click_index = params.get('click_index')
+        click_text = params.get('click_text')
+        ensure_visible = params.get('ensure_visible', True)
+        
         if not browser_controller.page:
             raise ValueError("Browser not launched. Call launch_browser first.")
             
@@ -186,9 +226,37 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
             submit=True
         )
         
+        if not search_success:
+            return {
+                "success": False,
+                "message": "Failed to perform search",
+                "clicked": False
+            }
+            
+        # Wait for results to load
+        results_ready = await browser_controller.wait_for_search_results()
+        if not results_ready:
+            return {
+                "success": True,
+                "message": "Search completed but results not found",
+                "clicked": False
+            }
+            
+        # Get result titles for reference
+        result_titles = await browser_controller.get_result_texts()
+        
+        # Click result if requested
+        clicked = False
+        if click_index:
+            clicked = await browser_controller.click_result_by_index(click_index, ensure_visible)
+        elif click_text:
+            clicked = await browser_controller.click_result_by_text(click_text, ensure_visible)
+        
         return {
-            "success": search_success,
-            "message": "Search completed successfully" if search_success else "Search failed"
+            "success": True,
+            "message": "Search completed successfully",
+            "clicked": clicked,
+            "results": result_titles
         }
     except ValueError as e:
         raise make_error(INVALID_PARAMS, str(e))
