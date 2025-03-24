@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from mcp.server.fastmcp import FastMCP
@@ -10,7 +10,7 @@ from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData, INTERNAL_ERROR, INVALID_PARAMS
 
 from browser_automation.controllers.browser_controller import BrowserController
-from browser_automation.controllers.square_controller import SquareController
+from browser_automation.utils.selectors import GoogleSelectors
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -29,6 +29,7 @@ class NavigateParams:
 class TypeTextParams:
     selector: str
     text: str
+    submit: bool = False
 
 @dataclass
 class ClickElementParams:
@@ -39,9 +40,8 @@ class InspectPageParams:
     selector: str = "body"
 
 @dataclass
-class SquareLoginParams:
-    email: str
-    password: str
+class GoogleSearchParams:
+    query: str
 
 # Initialize controllers
 browser_controller = BrowserController()
@@ -95,7 +95,11 @@ async def type_text(params: Dict[str, Any]) -> Dict[str, Any]:
         if not browser_controller.page:
             raise ValueError("Browser not launched. Call launch_browser first.")
             
-        success = await browser_controller.type_text(text_params.selector, text_params.text)
+        success = await browser_controller.type_text(
+            text_params.selector,
+            text_params.text,
+            submit=text_params.submit
+        )
         return {
             "success": success,
             "message": f"Typed text into {text_params.selector}" if success else f"Failed to type text into {text_params.selector}"
@@ -142,32 +146,14 @@ async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
         raise make_error(INTERNAL_ERROR, f"Page inspection failed: {str(e)}")
 
 @mcp.tool()
-async def square_login(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Login to Square using provided credentials."""
-    try:
-        login_params = SquareLoginParams(**params)
-        if not browser_controller.page:
-            raise ValueError("Browser not launched. Call launch_browser first.")
-            
-        square = SquareController(browser_controller.page)
-        success = await square.login(
-            email=login_params.email,
-            password=login_params.password
-        )
-        
-        return {
-            "success": success,
-            "message": "Login successful" if success else "Login failed"
-        }
-    except ValueError as e:
-        raise make_error(INVALID_PARAMS, str(e))
-    except Exception as e:
-        raise make_error(INTERNAL_ERROR, f"Login failed: {str(e)}")
-
-@mcp.tool()
 async def close_browser(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Close the browser and clean up resources."""
+    """Close the current browser instance."""
     try:
+        if not browser_controller.page:
+            return {
+                "success": True,
+                "message": "No browser instance running"
+            }
         await browser_controller.close()
         return {
             "success": True,
@@ -175,6 +161,39 @@ async def close_browser(params: Dict[str, Any]) -> Dict[str, Any]:
         }
     except Exception as e:
         raise make_error(INTERNAL_ERROR, f"Failed to close browser: {str(e)}")
+
+@mcp.tool()
+async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Perform a Google search.
+    
+    A convenience method that combines navigation and search into one step.
+    """
+    try:
+        search_params = GoogleSearchParams(**params)
+        if not browser_controller.page:
+            raise ValueError("Browser not launched. Call launch_browser first.")
+            
+        # Navigate to Google
+        nav_success = await browser_controller.navigate("https://www.google.com")
+        if not nav_success:
+            raise Exception("Failed to navigate to Google")
+            
+        # Perform search
+        search_success = await browser_controller.type_text(
+            GoogleSelectors.SEARCH['search_input'],
+            search_params.query,
+            submit=True
+        )
+        
+        return {
+            "success": search_success,
+            "message": "Search completed successfully" if search_success else "Search failed"
+        }
+    except ValueError as e:
+        raise make_error(INVALID_PARAMS, str(e))
+    except Exception as e:
+        raise make_error(INTERNAL_ERROR, f"Search failed: {str(e)}")
 
 def main() -> None:
     """Run the MCP server."""
