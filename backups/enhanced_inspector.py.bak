@@ -1,0 +1,172 @@
+"""Enhanced element inspection with selective analysis capabilities."""
+import json
+import logging
+from typing import Dict, Any, List, Optional
+from playwright.async_api import Page
+
+class EnhancedInspector:
+    """Advanced utility class for selective page inspection."""
+    
+    def __init__(self, page: Page):
+        self.page = page
+        self.logger = logging.getLogger(__name__)
+    
+    async def inspect_page(self, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Analyze current page structure with configurable options.
+        
+        Args:
+            options: Dictionary of inspection options:
+                - max_inputs: int (default: 20)
+                - max_components: int (default: 20)
+                - max_attributes: int (default: 5)
+                - text_length: int (default: 50)
+                - include_inputs: bool (default: True)
+                - include_components: bool (default: True)
+        """
+        options = options or {}
+        script = f"""() => {{
+            const CONFIG = {{
+                maxInputs: {options.get('max_inputs', 20)},
+                maxComponents: {options.get('max_components', 20)},
+                maxAttributes: {options.get('max_attributes', 5)},
+                textLength: {options.get('text_length', 50)},
+                includeInputs: {str(options.get('include_inputs', True)).lower()},
+                includeComponents: {str(options.get('include_components', True)).lower()}
+            }};
+            
+            function truncateText(text, maxLength = CONFIG.textLength) {{
+                if (!text) return '';
+                return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+            }}
+            
+            function getElementInfo(element) {{
+                const info = {{
+                    tag: element.tagName.toLowerCase(),
+                    id: element.id || '',
+                    classes: Array.from(element.classList).slice(0, 5),
+                    attributes: {{}},
+                    isVisible: !(element.style.display === 'none' || 
+                               element.style.visibility === 'hidden' ||
+                               element.style.opacity === '0'),
+                    textContent: truncateText(element.textContent)
+                }};
+                
+                let attrCount = 0;
+                for (const attr of element.attributes) {{
+                    if (attrCount >= CONFIG.maxAttributes) break;
+                    info.attributes[attr.name] = truncateText(attr.value);
+                    attrCount++;
+                }}
+                
+                return info;
+            }}
+            
+            const result = {{
+                url: window.location.href,
+                title: truncateText(document.title),
+                pageInfo: {{
+                    headings: Array.from(document.querySelectorAll('h1, h2, h3'))
+                        .slice(0, 10)
+                        .map(h => ({{
+                            level: h.tagName.toLowerCase(),
+                            text: truncateText(h.textContent)
+                        }}))
+                }}
+            }};
+            
+            if (CONFIG.includeInputs) {{
+                result.inputs = Array.from(document.querySelectorAll('input, button, select, textarea'))
+                    .slice(0, CONFIG.maxInputs)
+                    .map(input => ({{
+                        type: input.type || input.tagName.toLowerCase(),
+                        id: input.id || '',
+                        name: input.name || '',
+                        placeholder: input.placeholder || '',
+                        value: input.tagName.toLowerCase() === 'select' ? '' : (input.value || ''),
+                        attributes: Object.fromEntries(
+                            Array.from(input.attributes)
+                                .slice(0, CONFIG.maxAttributes)
+                                .map(attr => [attr.name, truncateText(attr.value)])
+                        )
+                    }}));
+            }}
+            
+            if (CONFIG.includeComponents) {{
+                result.webComponents = Array.from(document.querySelectorAll('*'))
+                    .filter(el => el.tagName.includes('-'))
+                    .slice(0, CONFIG.maxComponents)
+                    .map(el => ({{
+                        tag: el.tagName.toLowerCase(),
+                        attributes: Object.fromEntries(
+                            Array.from(el.attributes)
+                                .slice(0, CONFIG.maxAttributes)
+                                .map(attr => [attr.name, truncateText(attr.value)])
+                        ),
+                        hasShadowRoot: !!el.shadowRoot
+                    }}));
+            }}
+            
+            // Add basic form information
+            result.forms = Array.from(document.forms)
+                .slice(0, 5)
+                .map(form => ({{
+                    id: form.id || '',
+                    name: form.name || '',
+                    method: form.method || '',
+                    action: truncateText(form.action || ''),
+                    inputCount: form.elements.length
+                }}));
+            
+            return result;
+        }}"""
+        
+        try:
+            result = await self.page.evaluate(script)
+            self.logger.debug("Enhanced Page Analysis Results:")
+            self.logger.debug(json.dumps(result, indent=2))
+            return result
+        except Exception as e:
+            self.logger.error(f"Enhanced page analysis failed: {str(e)}")
+            return {}
+    
+    async def inspect_element(self, selector: str) -> Dict[str, Any]:
+        """Inspect a specific element on the page."""
+        script = f"""(selector) => {{
+            const element = document.querySelector(selector);
+            if (!element) return null;
+            
+            function truncateText(text, maxLength = 50) {{
+                if (!text) return '';
+                return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
+            }}
+            
+            return {{
+                tag: element.tagName.toLowerCase(),
+                id: element.id || '',
+                classes: Array.from(element.classList),
+                attributes: Object.fromEntries(
+                    Array.from(element.attributes)
+                        .slice(0, 5)
+                        .map(attr => [attr.name, truncateText(attr.value)])
+                ),
+                isVisible: !(element.style.display === 'none' || 
+                           element.style.visibility === 'hidden' ||
+                           element.style.opacity === '0'),
+                textContent: truncateText(element.textContent),
+                boundingBox: element.getBoundingClientRect().toJSON(),
+                computedStyle: {{
+                    display: getComputedStyle(element).display,
+                    visibility: getComputedStyle(element).visibility,
+                    position: getComputedStyle(element).position,
+                    zIndex: getComputedStyle(element).zIndex
+                }}
+            }};
+        }}"""
+        
+        try:
+            result = await self.page.evaluate(script, selector)
+            return result if result else {}
+        except Exception as e:
+            self.logger.error(f"Element inspection failed: {str(e)}")
+            return {}

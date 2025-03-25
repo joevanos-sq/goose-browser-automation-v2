@@ -13,7 +13,10 @@ from browser_automation.controllers.browser_controller import BrowserController
 from browser_automation.utils.selectors import GoogleSelectors
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Parameter Models
@@ -45,14 +48,17 @@ class GoogleSearchParams:
     click_index: Optional[int] = None
     click_text: Optional[str] = None
     ensure_visible: bool = True
+    timeout: int = 10000
 
 # Initialize controllers
 browser_controller = BrowserController()
 
-# Initialize MCP server
+# Initialize MCP server with longer timeout
 mcp = FastMCP(
     name="browser-automation",
-    description="Browser automation extension for Goose"
+    description="Browser automation extension for Goose",
+    tool_timeout=30,  # 30 seconds for tool execution
+    log_level="INFO"
 )
 
 def make_error(code: int, message: str) -> McpError:
@@ -142,21 +148,107 @@ async def click_element(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @mcp.tool()
 async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Inspect the current page content and structure."""
+    """Get current page state for debugging."""
     try:
         inspect_params = InspectPageParams(**params)
         if not browser_controller.page:
-            raise ValueError("Browser not launched. Call launch_browser first.")
+            raise ValueError("Browser not launched")
             
-        content = await browser_controller.inspect_page(inspect_params.selector)
-        return {
-            "success": True,
-            "content": content
-        }
+        return await browser_controller.inspect_page(inspect_params.selector)
     except ValueError as e:
         raise make_error(INVALID_PARAMS, str(e))
     except Exception as e:
         raise make_error(INTERNAL_ERROR, f"Page inspection failed: {str(e)}")
+
+@mcp.tool()
+async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Perform a Google search with enhanced result handling.
+    
+    This is the recommended way to perform Google searches. It handles all the necessary steps:
+    1. Navigating to google.com
+    2. Locating the search input
+    3. Entering the search query
+    4. Submitting the search
+    5. Waiting for results to load
+    6. Optionally clicking a result
+    
+    Parameters:
+        query (str): The search term to look up on Google
+        click_index (int, optional): Index of result to click (1-based)
+        click_text (str, optional): Text to match in result title
+        ensure_visible (bool, optional): Whether to ensure result is in viewport before clicking
+        timeout (int, optional): Maximum time to wait for operations in milliseconds
+        
+    Returns:
+        Dict containing:
+        - success (bool): Whether the search was successful
+        - message (str): Status message about the operation
+        - clicked (bool): Whether a result was successfully clicked
+        - results (list, optional): List of result titles if available
+    """
+    try:
+        # Validate and extract parameters
+        search_params = GoogleSearchParams(**params)
+        
+        if not browser_controller.page:
+            raise ValueError("Browser not launched. Call launch_browser first.")
+            
+        # Navigate to Google
+        nav_success = await browser_controller.navigate("https://www.google.com")
+        if not nav_success:
+            raise Exception("Failed to navigate to Google")
+            
+        # Wait for and fill search input
+        search_input = await browser_controller.page.wait_for_selector(
+            GoogleSelectors.SEARCH['search_input'],
+            state='visible',
+            timeout=5000
+        )
+        
+        if not search_input:
+            raise Exception("Search input not found")
+            
+        # Type query and submit
+        await search_input.fill(search_params.query)
+        await search_input.press('Enter')
+        
+        # Wait for results
+        results_ready = await browser_controller.wait_for_search_results(timeout=10000)
+        if not results_ready:
+            return {
+                "success": True,
+                "message": "Search completed but results not found",
+                "clicked": False,
+                "results": []
+            }
+            
+        # Get result titles for reference
+        result_titles = await browser_controller.get_result_texts()
+        
+        # Click result if requested
+        clicked = False
+        if search_params.click_index:
+            clicked = await browser_controller.click_result_by_index(
+                search_params.click_index,
+                ensure_visible=search_params.ensure_visible
+            )
+        elif search_params.click_text:
+            clicked = await browser_controller.click_result_by_text(
+                search_params.click_text,
+                ensure_visible=search_params.ensure_visible
+            )
+        
+        return {
+            "success": True,
+            "message": "Search completed successfully",
+            "clicked": clicked,
+            "results": result_titles
+        }
+    except ValueError as e:
+        raise make_error(INVALID_PARAMS, str(e))
+    except Exception as e:
+        raise make_error(INTERNAL_ERROR, f"Search failed: {str(e)}")
 
 @mcp.tool()
 async def close_browser(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -174,94 +266,6 @@ async def close_browser(params: Dict[str, Any]) -> Dict[str, Any]:
         }
     except Exception as e:
         raise make_error(INTERNAL_ERROR, f"Failed to close browser: {str(e)}")
-
-@mcp.tool()
-async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Perform a Google search with enhanced result handling.
-    
-    This is the recommended way to perform Google searches. It handles all the necessary steps:
-    1. Navigating to google.com
-    2. Locating the search input
-    3. Entering the search query
-    4. Submitting the search
-    5. Waiting for results to load
-    6. Optionally clicking a result
-    
-    Rather than using navigate_to() and type_text() manually, always use this method
-    for Google searches as it uses reliable selectors and proper submission handling.
-    
-    Parameters:
-        query (str): The search term to look up on Google
-        click_index (int, optional): Index of result to click (1-based)
-        click_text (str, optional): Text to match in result title
-        ensure_visible (bool, optional): Whether to ensure result is in viewport before clicking
-        
-    Returns:
-        Dict containing:
-        - success (bool): Whether the search was successful
-        - message (str): Status message about the operation
-        - clicked (bool): Whether a result was successfully clicked
-        - results (list, optional): List of result titles if available
-    """
-    try:
-        # Validate and extract parameters
-        search_params = GoogleSearchParams(**params)
-        click_index = params.get('click_index')
-        click_text = params.get('click_text')
-        ensure_visible = params.get('ensure_visible', True)
-        
-        if not browser_controller.page:
-            raise ValueError("Browser not launched. Call launch_browser first.")
-            
-        # Navigate to Google
-        nav_success = await browser_controller.navigate("https://www.google.com")
-        if not nav_success:
-            raise Exception("Failed to navigate to Google")
-            
-        # Perform search
-        search_success = await browser_controller.type_text(
-            GoogleSelectors.SEARCH['search_input'],
-            search_params.query,
-            submit=True
-        )
-        
-        if not search_success:
-            return {
-                "success": False,
-                "message": "Failed to perform search",
-                "clicked": False
-            }
-            
-        # Wait for results to load
-        results_ready = await browser_controller.wait_for_search_results()
-        if not results_ready:
-            return {
-                "success": True,
-                "message": "Search completed but results not found",
-                "clicked": False
-            }
-            
-        # Get result titles for reference
-        result_titles = await browser_controller.get_result_texts()
-        
-        # Click result if requested
-        clicked = False
-        if click_index:
-            clicked = await browser_controller.click_result_by_index(click_index, ensure_visible)
-        elif click_text:
-            clicked = await browser_controller.click_result_by_text(click_text, ensure_visible)
-        
-        return {
-            "success": True,
-            "message": "Search completed successfully",
-            "clicked": clicked,
-            "results": result_titles
-        }
-    except ValueError as e:
-        raise make_error(INVALID_PARAMS, str(e))
-    except Exception as e:
-        raise make_error(INTERNAL_ERROR, f"Search failed: {str(e)}")
 
 def main() -> None:
     """Run the MCP server."""
