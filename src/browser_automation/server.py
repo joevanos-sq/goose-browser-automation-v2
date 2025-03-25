@@ -229,8 +229,7 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
         # Find and interact with search input using smart selector
         search_input = await smart_selector.find_element(
             element_type="input",
-            context="search",
-            attributes=["name", "type", "role"]
+            context="search"
         )
         
         if not search_input:
@@ -255,8 +254,7 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
         result_titles = []
         results = await smart_selector.find_element(
             element_type="link",
-            context="search-results",
-            max_elements=10  # Limit to first 10 results
+            context="search-results"
         )
         
         if results:

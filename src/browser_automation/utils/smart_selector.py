@@ -17,7 +17,7 @@ class SmartSelector:
                                target_index: Optional[int] = None,
                                element_type: Optional[str] = None,
                                context: str = "document",
-                               attributes: Optional[List[str]] = None) -> str:
+                               attributes: Optional[List[str]] = None) -> Optional[str]:
         """
         Find the most reliable selector for an element based on context.
         
