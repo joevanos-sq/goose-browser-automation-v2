@@ -16,7 +16,8 @@ class SmartSelector:
                                target_text: Optional[str] = None,
                                target_index: Optional[int] = None,
                                element_type: Optional[str] = None,
-                               context: str = "document") -> str:
+                               context: str = "document",
+                               attributes: Optional[List[str]] = None) -> str:
         """
         Find the most reliable selector for an element based on context.
         
@@ -31,7 +32,7 @@ class SmartSelector:
         """
         # Get candidate elements based on initial criteria
         candidates = await self._find_candidate_elements(
-            target_text, target_index, element_type, context
+            target_text, target_index, element_type, context, attributes
         )
         
         if not candidates:
@@ -53,7 +54,8 @@ class SmartSelector:
                                      target_text: Optional[str] = None,
                                      target_index: Optional[int] = None,
                                      element_type: Optional[str] = None,
-                                     context: str = "document") -> List[Dict[str, Any]]:
+                                     context: str = "document",
+                                     attributes: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Find elements matching the initial criteria."""
         # Use our inspection tool to get page elements
         inspection_params = {
@@ -234,7 +236,8 @@ class SmartSelector:
                           target_text: Optional[str] = None,
                           target_index: Optional[int] = None,
                           element_type: Optional[str] = None,
-                          context: str = "document") -> Optional[Locator]:
+                          context: str = "document",
+                          attributes: Optional[List[str]] = None) -> Optional[Locator]:
         """
         Find an element using smart selector strategies.
         
@@ -243,6 +246,7 @@ class SmartSelector:
             target_index: Index of the element (1-based)
             element_type: Type of element to look for (e.g., 'link', 'button')
             context: Context to search in (e.g., 'search-results', 'navigation')
+            attributes: List of attributes to include in element analysis
             
         Returns:
             Playwright Locator for the element if found, None otherwise
@@ -251,7 +255,8 @@ class SmartSelector:
             target_text=target_text,
             target_index=target_index,
             element_type=element_type,
-            context=context
+            context=context,
+            attributes=attributes
         )
         
         if not selector:
