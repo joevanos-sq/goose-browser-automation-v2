@@ -11,6 +11,7 @@ from mcp.types import ErrorData, INTERNAL_ERROR, INVALID_PARAMS
 
 from browser_automation.controllers.browser_controller import BrowserController
 from browser_automation.utils.selectors import GoogleSelectors
+from browser_automation.utils.smart_selector import SmartSelector
 
 # Configure logging
 logging.basicConfig(
@@ -186,7 +187,7 @@ async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
 @mcp.tool()
 async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Perform a Google search with enhanced result handling.
+    Perform a Google search with enhanced result handling using smart selectors.
     
     This is the recommended way to perform Google searches. It handles all the necessary steps:
     1. Navigating to google.com
@@ -200,7 +201,7 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
         query (str): The search term to look up on Google
         click_index (int, optional): Index of result to click (1-based)
         click_text (str, optional): Text to match in result title
-        ensure_visible (bool, optional): Whether to ensure result is in viewport before clicking
+        ensure_visible (bool, optional): Whether to ensure result is in viewport
         timeout (int, optional): Maximum time to wait for operations in milliseconds
         
     Returns:
@@ -217,18 +218,29 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
         if not browser_controller.page:
             raise ValueError("Browser not launched. Call launch_browser first.")
             
+        # Initialize smart selector
+        smart_selector = SmartSelector(browser_controller.page)
+            
         # Navigate to Google
         nav_success = await browser_controller.navigate("https://www.google.com")
         if not nav_success:
             raise Exception("Failed to navigate to Google")
             
-        # Wait for and fill search input
-        search_input = await browser_controller.page.wait_for_selector(
-            GoogleSelectors.SEARCH['search_input'],
-            state='visible',
-            timeout=5000
+        # Find and interact with search input using smart selector
+        search_input = await smart_selector.find_element(
+            element_type="input",
+            context="search",
+            attributes=["name", "type", "role"]
         )
         
+        if not search_input:
+            logger.error("Smart selector failed to find search input, falling back to default selector")
+            search_input = await browser_controller.page.wait_for_selector(
+                GoogleSelectors.SEARCH['search_input'],
+                state='visible',
+                timeout=5000
+            )
+            
         if not search_input:
             raise Exception("Search input not found")
             
@@ -236,31 +248,47 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
         await search_input.fill(search_params.query)
         await search_input.press('Enter')
         
-        # Wait for results
-        results_ready = await browser_controller.wait_for_search_results(timeout=10000)
-        if not results_ready:
-            return {
-                "success": True,
-                "message": "Search completed but results not found",
-                "clicked": False,
-                "results": []
-            }
-            
-        # Get result titles for reference
-        result_titles = await browser_controller.get_result_texts()
+        # Wait for results using smart selector
+        await browser_controller.page.wait_for_timeout(2000)  # Initial load time
+        
+        # Get search results using smart selector
+        result_titles = []
+        results = await smart_selector.find_element(
+            element_type="link",
+            context="search-results",
+            max_elements=10  # Limit to first 10 results
+        )
+        
+        if results:
+            elements = await browser_controller.page.query_selector_all('h3')
+            for element in elements:
+                title = await element.inner_text()
+                result_titles.append(title)
         
         # Click result if requested
         clicked = False
-        if search_params.click_index:
-            clicked = await browser_controller.click_result_by_index(
-                search_params.click_index,
-                ensure_visible=search_params.ensure_visible
-            )
-        elif search_params.click_text:
-            clicked = await browser_controller.click_result_by_text(
-                search_params.click_text,
-                ensure_visible=search_params.ensure_visible
-            )
+        if search_params.click_text or search_params.click_index:
+            try:
+                result = await smart_selector.find_element(
+                    target_text=search_params.click_text if search_params.click_text else None,
+                    target_index=search_params.click_index if search_params.click_index else None,
+                    element_type="link",
+                    context="search-results"
+                )
+                
+                if result:
+                    if search_params.ensure_visible:
+                        await result.scroll_into_view_if_needed()
+                        await browser_controller.page.wait_for_timeout(500)
+                    
+                    await result.click()
+                    clicked = True
+                    logger.info(f"Successfully clicked result using smart selector")
+                else:
+                    logger.warning("Smart selector could not find the requested result")
+                    
+            except Exception as e:
+                logger.error(f"Failed to click result with smart selector: {str(e)}")
         
         return {
             "success": True,
