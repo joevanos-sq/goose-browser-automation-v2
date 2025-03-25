@@ -8,6 +8,7 @@ A browser automation extension for Goose that provides programmatic control of w
 - Navigate web pages
 - Interact with page elements (click, type)
 - Enhanced Google search functionality
+- Advanced page inspection capabilities
 - Support for both visible and headless browsers
 - Automatic resource cleanup
 - Comprehensive error handling
@@ -90,10 +91,43 @@ params = {
 ```
 
 ### inspect_page
-Inspect the current page content and structure
+Get current page state with configurable inspection options
 ```python
 params = {
-    "selector": "body"  # Optional: Element to inspect
+    "selector": "body",           # Optional: Element to start inspection from
+    "max_elements": 100,          # Optional: Maximum elements to return
+    "element_types": ["a", "button"], # Optional: Filter by element types
+    "attributes": ["href", "class"],  # Optional: Attributes to include
+    "max_depth": 3,              # Optional: Maximum depth to traverse
+    "mode": "all"               # Optional: 'all', 'clickable', or 'form'
+}
+
+# Returns structured information about:
+{
+    "url": "current_url",
+    "title": "page_title",
+    "timestamp": "iso_timestamp",
+    "viewport": {
+        "width": 1280,
+        "height": 800
+    },
+    "elements": [
+        {
+            "tag": "button",
+            "id": "submit",
+            "text": "Submit",
+            "attributes": {...},
+            "isVisible": true,
+            "position": {
+                "x": 100,
+                "y": 200,
+                "width": 80,
+                "height": 40,
+                "inViewport": true
+            }
+        }
+    ],
+    "totalElements": 10
 }
 ```
 
@@ -104,6 +138,34 @@ params = {}  # No parameters required
 ```
 
 ## Best Practices
+
+### Page Inspection
+Use the appropriate inspection mode for your needs:
+- `mode: "all"` - Full page structure with filtering
+- `mode: "clickable"` - Focus on interactive elements
+- `mode: "form"` - Focus on form inputs and controls
+
+Example usage:
+```python
+# Get clickable elements
+result = await inspect_page({
+    "mode": "clickable",
+    "max_elements": 10
+})
+
+# Get form elements
+result = await inspect_page({
+    "mode": "form",
+    "max_elements": 5
+})
+
+# Get specific elements
+result = await inspect_page({
+    "element_types": ["a", "button"],
+    "attributes": ["href", "class"],
+    "max_depth": 2
+})
+```
 
 ### Google Search Automation
 Always use the `google_search()` function for Google searches rather than manually navigating and typing. This ensures:
@@ -190,6 +252,7 @@ mcp dev src/browser_automation/server.py
 - Resource monitoring through status endpoint
 - Configurable timeouts for operations
 - Efficient selector strategies
+- Memory-efficient page inspection
 
 ## Contributing
 

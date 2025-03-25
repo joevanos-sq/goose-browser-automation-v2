@@ -1,4 +1,4 @@
-# Web Automation Extension Requirements
+# Browser Automation Extension Requirements
 
 ## 1. Core Requirements
 
@@ -23,35 +23,44 @@
 - [x] Wait for page events
 - [x] Monitor network activity
 
-## 2. Square-Specific Requirements
+### 1.4 Page Inspection
+- [x] Multiple inspection modes
+- [x] Element filtering
+- [x] Attribute selection
+- [x] DOM traversal
+- [x] Visibility detection
+- [x] Position information
 
-### 2.1 Component Support
-- [x] market-button
-- [x] market-input-text
-- [x] market-select
-- [x] market-dropdown
-- [x] sq-button
-- [x] sq-input
-- [x] sq-form
-- [x] sq-payment-form
+## 2. Feature Requirements
 
-### 2.2 Authentication
-- [x] Handle login flows
-- [x] Support session management
-- [x] Handle redirects
-- [x] Manage tokens/cookies
+### 2.1 Inspection Modes
+- [x] Full page analysis
+- [x] Clickable elements focus
+- [x] Form elements focus
+- [ ] Visual highlighting
+- [ ] Element screenshots
 
-### 2.3 Square UI Patterns
-- [x] Data-testid selectors
-- [x] Custom web components
-- [x] Loading states
-- [x] Error states
+### 2.2 Element Analysis
+- [x] Tag information
+- [x] Attributes
+- [x] Text content
+- [x] Visibility state
+- [x] Position data
+- [x] Viewport status
+
+### 2.3 Performance Features
+- [x] Element count limits
+- [x] Depth control
+- [x] Attribute filtering
+- [x] Memory optimization
+- [x] Fast DOM traversal
 
 ## 3. Technical Requirements
 
 ### 3.1 Dependencies
 - [x] Python 3.13+
-- [x] Playwright
+- [x] Playwright >= 1.51.0
+- [x] MCP >= 1.4.0
 - [x] Chrome Canary
 - [x] Async support
 
@@ -59,6 +68,7 @@
 - [x] Tool execution < 30s
 - [x] Browser launch < 5s
 - [x] Element interaction < 1s
+- [x] Page inspection < 2s
 - [x] Memory management
 - [x] Resource cleanup
 
@@ -84,15 +94,17 @@
 - [x] Secure cookie handling
 - [x] Network isolation
 
-### 4.2 Credential Management
-- [x] Secure password handling
-- [x] Token management
-- [x] Session cleanup
+### 4.2 Input Validation
+- [x] Parameter validation
+- [x] URL validation
+- [x] Selector sanitization
+- [x] Resource limits
 
 ### 4.3 Resource Protection
 - [x] Memory limits
 - [x] Disk space management
 - [x] Process isolation
+- [x] Cleanup procedures
 
 ## 5. Integration Requirements
 
@@ -146,7 +158,7 @@
 
 ### 8.2 Integration Tests
 - [x] Browser control
-- [x] Square integration
+- [x] Page inspection
 - [x] Network handling
 - [x] Resource management
 
@@ -157,15 +169,15 @@
 - [x] Memory leaks
 
 ## Status
-- ✅ Implemented: 90%
-- 🚧 In Progress: 8%
+- ✅ Implemented: 95%
+- 🚧 In Progress: 3%
 - ❌ Not Started: 2%
 
 ## Priority Matrix
 1. **Critical**
    - MCP compliance
    - Browser control
-   - Square integration
+   - Page inspection
    - Error handling
 
 2. **High**
@@ -175,8 +187,8 @@
    - Documentation
 
 3. **Medium**
-   - Advanced features
-   - Additional Square components
+   - Advanced inspection features
+   - Visual highlighting
    - Performance optimization
    - Extended debugging
 

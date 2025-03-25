@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Web Automation Extension is a Goose extension designed to provide robust, reliable web automation capabilities with specific optimizations for Square's web applications. It implements the Model Context Protocol (MCP) and uses Playwright for modern web automation.
+The Web Automation Extension is a Goose extension designed to provide robust, reliable web automation capabilities with specific optimizations for web applications. It implements the Model Context Protocol (MCP) and uses Playwright for modern web automation.
 
 ## Architecture
 
@@ -14,21 +14,39 @@ The Web Automation Extension is a Goose extension designed to provide robust, re
    - Routes tool calls to appropriate handlers
    - Manages initialization and capability declaration
 
-2. **PlaywrightManager**
+2. **BrowserController**
    - Manages browser instances and automation
    - Handles browser lifecycle (launch, interact, close)
    - Provides retry mechanisms and error handling
-   - Implements Square-specific selectors and interactions
+   - Implements selectors and interactions
+
+3. **ElementInspector**
+   - Provides detailed page analysis
+   - Supports multiple inspection modes
+   - Handles DOM traversal and filtering
+   - Provides element visibility information
 
 ### Directory Structure
 ```
-webautomation/
+browser_automation/
 ├── src/
-│   └── webautomation/
+│   └── browser_automation/
 │       ├── __init__.py
-│       ├── __main__.py
-│       └── server.py
+│       ├── server.py
+│       ├── controllers/
+│       │   ├── __init__.py
+│       │   ├── browser_controller.py
+│       │   └── square_controller.py
+│       └── utils/
+│           ├── __init__.py
+│           ├── inspector.py
+│           ├── selectors.py
+│           └── base_logger.py
 ├── tests/
+│   ├── integration/
+│   │   └── test_square_login.py
+│   └── unit/
+│       └── test_browser.py
 ├── pyproject.toml
 └── README.md
 ```
@@ -49,27 +67,27 @@ webautomation/
 - Frame handling
 - Wait mechanisms for page loads and network idle
 
-### 3. Square-Specific Features
-- Specialized selectors for Square components:
-  ```python
-  SQUARE_COMPONENTS = {
-      'market-button': 'market-button',
-      'market-input-text': 'market-input-text',
-      'market-select': 'market-select',
-      'market-dropdown': 'market-dropdown',
-      'sq-button': 'sq-button',
-      'sq-input': 'sq-input',
-      'sq-form': 'sq-form',
-      'sq-payment-form': 'sq-payment-form'
-  }
-  ```
-- Handling of Square's custom web components
-- Support for Square's authentication flows
-- Recognition of Square-specific data-testid attributes
+### 3. Page Inspection
+- Multiple inspection modes:
+  - Full page structure analysis
+  - Clickable elements focus
+  - Form elements focus
+- Configurable filtering:
+  - Element type filtering
+  - Attribute selection
+  - Depth control
+- Visibility information:
+  - Element dimensions
+  - Viewport position
+  - Visibility state
+- Performance optimizations:
+  - Element count limits
+  - Selective attribute collection
+  - Efficient DOM traversal
 
 ### 4. Error Handling & Debugging
 - Comprehensive logging system
-  - Location: ~/.goose/logs/webautomation/
+  - Location: ~/.goose/logs/browser_automation/
   - Format: Timestamped entries with context
   - Levels: DEBUG, INFO, WARNING, ERROR
 - Playwright tracing for debugging
@@ -78,10 +96,10 @@ webautomation/
 
 ### 5. Tools API
 
-#### webautomation__launch_browser
+#### browser_automation__launch_browser
 ```python
 {
-    "name": "webautomation__launch_browser",
+    "name": "browser_automation__launch_browser",
     "parameters": {
         "headless": {
             "type": "boolean",
@@ -91,37 +109,62 @@ webautomation/
 }
 ```
 
-#### webautomation__navigate
+#### browser_automation__navigate_to
 ```python
 {
-    "name": "webautomation__navigate",
+    "name": "browser_automation__navigate_to",
     "parameters": {
-        "browser_id": "integer",
-        "url": "string"
+        "url": "string",
+        "wait_for": {
+            "type": "string",
+            "enum": ["load", "domcontentloaded", "networkidle"],
+            "default": "networkidle"
+        }
     }
 }
 ```
 
-#### webautomation__interact
+#### browser_automation__inspect_page
 ```python
 {
-    "name": "webautomation__interact",
+    "name": "browser_automation__inspect_page",
     "parameters": {
-        "browser_id": "integer",
-        "action": "string",  # click, type, select
-        "selector": "string",
-        "value": "string"    # optional
+        "selector": {
+            "type": "string",
+            "default": "body"
+        },
+        "max_elements": {
+            "type": "integer",
+            "default": 100
+        },
+        "element_types": {
+            "type": "array",
+            "items": {"type": "string"},
+            "optional": true
+        },
+        "attributes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "optional": true
+        },
+        "max_depth": {
+            "type": "integer",
+            "default": 3
+        },
+        "mode": {
+            "type": "string",
+            "enum": ["all", "clickable", "form"],
+            "default": "all"
+        }
     }
 }
 ```
 
-#### webautomation__close_browser
+#### browser_automation__close_browser
 ```python
 {
-    "name": "webautomation__close_browser",
-    "parameters": {
-        "browser_id": "integer"
-    }
+    "name": "browser_automation__close_browser",
+    "parameters": {}
 }
 ```
 
@@ -140,14 +183,15 @@ webautomation/
 - More consistent behavior with modern web apps
 - Better support for web components
 
-### 3. Retry Mechanism Design
+### 3. Inspection Architecture
 ```python
-async def _retry_with_logging(self, func, max_retries=3, delay=1):
+class ElementInspector:
     """
-    Implements exponential backoff with:
-    - Detailed logging of each attempt
-    - Configurable retry count and delay
-    - Preservation of error context
+    Implements a flexible page inspection system with:
+    - Multiple inspection modes
+    - Configurable filtering
+    - Performance optimization
+    - Memory efficiency
     """
 ```
 
@@ -169,8 +213,7 @@ async def _retry_with_logging(self, func, max_retries=3, delay=1):
    ```toml
    [dependencies]
    playwright = ">=1.51.0"
-   asyncio = "*"
-   logging = "*"
+   mcp = ">=1.4.0"
    ```
 
 3. **System Requirements**
@@ -178,43 +221,23 @@ async def _retry_with_logging(self, func, max_retries=3, delay=1):
    - Write access to ~/.goose/logs
    - Network access for web automation
 
-### Functional Requirements
-1. **Browser Control**
-   - Launch/close browsers
-   - Multiple concurrent sessions
-   - Resource management
-
-2. **Web Interaction**
-   - Navigation
-   - Element interaction
-   - Shadow DOM support
-   - Frame handling
-
-3. **Square Integration**
-   - Support for Square web components
-   - Authentication flow handling
-   - Custom selector support
-
-4. **Error Handling**
-   - Retry mechanisms
-   - Logging
-   - Debugging support
-
 ### Performance Requirements
 1. **Response Times**
    - Tool execution < 30s
    - Browser launch < 5s
    - Element interaction < 1s
+   - Page inspection < 2s
 
 2. **Resource Usage**
    - Memory per browser < 500MB
    - Log file rotation
    - Automatic cleanup of old sessions
+   - Efficient DOM traversal
 
 ## Extension Development
 
 ### Adding New Features
-1. Update PlaywrightManager with new functionality
+1. Update BrowserController with new functionality
 2. Add new tool definition in MCPServer
 3. Update documentation
 4. Add tests
@@ -228,39 +251,48 @@ pytest tests/unit
 pytest tests/integration
 
 # Run with debug logging
-DEBUG=1 python -m webautomation
+DEBUG=1 python -m browser_automation
 ```
 
 ### Debugging
-1. Check logs in ~/.goose/logs/webautomation/
+1. Check logs in ~/.goose/logs/browser_automation/
 2. Use Playwright trace files
 3. Enable debug logging
 4. Use browser devtools in non-headless mode
 
 ## Common Usage Patterns
 
-### Square Login Flow
+### Page Inspection
 ```python
-# Launch browser
-browser_id = webautomation__launch_browser(headless=False)
+# Get clickable elements
+result = await inspect_page({
+    "mode": "clickable",
+    "max_elements": 10
+})
 
-# Login sequence
-webautomation__navigate(browser_id, "https://app.squareupstaging.com/login")
-webautomation__interact(browser_id, "type", "market-input-text[data-testid='email-input']", "email@example.com")
-webautomation__interact(browser_id, "click", "market-button[data-testid='continue-button']")
-webautomation__interact(browser_id, "type", "market-input-text[data-testid='password-input']", "password")
-webautomation__interact(browser_id, "click", "market-button[data-testid='sign-in-button']")
+# Get form elements
+result = await inspect_page({
+    "mode": "form",
+    "max_elements": 5
+})
+
+# Get specific elements
+result = await inspect_page({
+    "element_types": ["a", "button"],
+    "attributes": ["href", "class"],
+    "max_depth": 2
+})
 ```
 
 ## Future Enhancements
-1. Cookie/session management
+1. Visual element highlighting
 2. Network request interception
 3. Visual regression testing
 4. Performance metrics collection
-5. Extended Square component support
+5. Extended component support
 
 ## Security Considerations
-1. Credential handling
+1. Input validation
 2. Session isolation
 3. Network security
 4. Resource cleanup
