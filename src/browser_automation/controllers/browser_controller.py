@@ -6,6 +6,7 @@ import random
 from typing import Dict, Any, Optional, Literal, List
 from playwright.async_api import async_playwright, Page, Browser, Playwright
 from browser_automation.utils.selectors import GoogleSelectors
+from browser_automation.utils.inspector import ElementInspector
 
 logger = logging.getLogger(__name__)
 
@@ -297,15 +298,27 @@ class BrowserController:
         selector = GoogleSelectors.get_result_by_text(text)
         return await self.click_element(selector, ensure_visible)
             
-    async def inspect_page(self, selector: str = "body") -> Dict[str, Any]:
+    async def inspect_page(self, 
+                      selector: str = "body",
+                      max_elements: int = 100,
+                      element_types: Optional[List[str]] = None,
+                      attributes: Optional[List[str]] = None,
+                      max_depth: int = 3,
+                      mode: Literal['all', 'clickable', 'form'] = 'all') -> Dict[str, Any]:
         """
-        Get current page state for debugging.
+        Get current page state with configurable inspection options.
         
         Args:
             selector: Element selector to inspect
+            max_elements: Maximum number of elements to return
+            element_types: List of element types to include (e.g. ['a', 'button'])
+            attributes: List of attributes to include in results
+            max_depth: Maximum depth to traverse in DOM tree
+            mode: Inspection mode - 'all' for full tree, 'clickable' for interactive elements,
+                 or 'form' for form elements
             
         Returns:
-            Dict containing page state information
+            Dict containing filtered page state information
             
         Raises:
             ValueError: If browser not launched
@@ -314,16 +327,20 @@ class BrowserController:
             raise ValueError("Browser not launched")
             
         try:
-            element = await self._page.query_selector(selector)
-            if not element:
-                return {"error": f"Element not found: {selector}"}
-                
-            content = await element.inner_html()
-            return {
-                "url": self._page.url,
-                "title": await self._page.title(),
-                "content": content
-            }
+            inspector = ElementInspector(self._page)
+            
+            if mode == 'clickable':
+                return await inspector.find_clickable_elements(max_elements)
+            elif mode == 'form':
+                return await inspector.find_form_elements(max_elements)
+            else:
+                return await inspector.inspect_page(
+                    selector=selector,
+                    max_elements=max_elements,
+                    element_types=element_types,
+                    attributes=attributes,
+                    max_depth=max_depth
+                )
         except Exception as e:
             logger.error(f"Failed to inspect page: {str(e)}")
             return {"error": str(e)}

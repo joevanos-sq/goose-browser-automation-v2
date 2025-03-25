@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Literal
 from dataclasses import dataclass
 
 from mcp.server.fastmcp import FastMCP
@@ -40,7 +40,13 @@ class ClickElementParams:
 
 @dataclass
 class InspectPageParams:
+    """Parameters for page inspection."""
     selector: str = "body"
+    max_elements: int = 100
+    element_types: Optional[list[str]] = None
+    attributes: Optional[list[str]] = None
+    max_depth: int = 3
+    mode: Literal["all", "clickable", "form"] = "all"
 
 @dataclass
 class GoogleSearchParams:
@@ -148,13 +154,30 @@ async def click_element(params: Dict[str, Any]) -> Dict[str, Any]:
 
 @mcp.tool()
 async def inspect_page(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get current page state for debugging."""
+    """Get current page state for debugging with configurable inspection options.
+    
+    Args:
+        selector: Element selector to inspect
+        max_elements: Maximum number of elements to return
+        element_types: List of element types to include (e.g. ['a', 'button'])
+        attributes: List of attributes to include in results
+        max_depth: Maximum depth to traverse in DOM tree
+        mode: Inspection mode - 'all' for full tree, 'clickable' for interactive elements,
+             or 'form' for form elements
+    """
     try:
         inspect_params = InspectPageParams(**params)
         if not browser_controller.page:
             raise ValueError("Browser not launched")
             
-        return await browser_controller.inspect_page(inspect_params.selector)
+        return await browser_controller.inspect_page(
+            selector=inspect_params.selector,
+            max_elements=inspect_params.max_elements,
+            element_types=inspect_params.element_types,
+            attributes=inspect_params.attributes,
+            max_depth=inspect_params.max_depth,
+            mode=inspect_params.mode
+        )
     except ValueError as e:
         raise make_error(INVALID_PARAMS, str(e))
     except Exception as e:
