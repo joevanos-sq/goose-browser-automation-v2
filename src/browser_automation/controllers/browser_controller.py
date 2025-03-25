@@ -303,7 +303,8 @@ class BrowserController:
         element = await smart_selector.find_element(
             target_text=text,
             element_type="link",
-            context="search-results"
+            context="search-results",
+            attributes=["href", "class", "role"]
         )
         
         if not element:
