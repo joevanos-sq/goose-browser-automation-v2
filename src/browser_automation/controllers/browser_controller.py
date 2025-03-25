@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional, Literal, List
 from playwright.async_api import async_playwright, Page, Browser, Playwright
 from browser_automation.utils.selectors import GoogleSelectors
 from browser_automation.utils.inspector import ElementInspector
+from browser_automation.utils.smart_selector import SmartSelector
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +287,7 @@ class BrowserController:
         
     async def click_result_by_text(self, text: str, ensure_visible: bool = True) -> bool:
         """
-        Click search result containing specified text.
+        Click search result containing specified text using smart selection.
         
         Args:
             text: Text to match in result title
@@ -295,8 +296,32 @@ class BrowserController:
         Returns:
             bool: True if click successful, False otherwise
         """
-        selector = GoogleSelectors.get_result_by_text(text)
-        return await self.click_element(selector, ensure_visible)
+        if not self._page:
+            raise ValueError("Browser not launched")
+            
+        smart_selector = SmartSelector(self._page)
+        element = await smart_selector.find_element(
+            target_text=text,
+            element_type="link",
+            context="search-results"
+        )
+        
+        if not element:
+            logger.error(f"Could not find result containing text: {text}")
+            return False
+            
+        try:
+            if ensure_visible:
+                await element.scroll_into_view_if_needed()
+                await self._page.wait_for_timeout(500)  # Small delay after scroll
+                
+            await element.click()
+            logger.info(f"Successfully clicked result containing: {text}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to click result: {str(e)}")
+            return False
             
     async def inspect_page(self, 
                       selector: str = "body",
