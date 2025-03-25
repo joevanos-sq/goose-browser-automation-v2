@@ -230,7 +230,7 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
         search_input = await smart_selector.find_element(
             element_type="textarea",
             context="search",
-            attributes=["name", "type", "role", "aria-label"],
+            attributes=["id", "name", "role"],
             target_text="Search"
         )
         

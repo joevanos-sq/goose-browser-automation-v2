@@ -170,6 +170,7 @@ class SmartSelector:
         # Strategy 1: ID-based selector (most reliable)
         if element["id"]:
             selectors.append(f"#{element['id']}")
+            selectors.append(f'textarea#{element["id"]}')
             
         # Strategy 2: Attribute-based selectors
         for name, value in element["attributes"].items():
