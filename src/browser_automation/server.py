@@ -227,7 +227,7 @@ async def google_search(params: Dict[str, Any]) -> Dict[str, Any]:
             raise Exception("Failed to navigate to Google")
             
         # Find and interact with search input using smart selector
-        search_input = browser_controller.page.locator('textarea[name="q"]').first
+        search_input = browser_controller.page.get_by_role("combobox", name="Search")
         
         if not search_input:
             logger.error("Smart selector failed to find search input, falling back to default selector")
