@@ -11,7 +11,39 @@ class SmartSelector:
     def __init__(self, page: Page):
         """Initialize with Playwright page object."""
         self.page = page
+    
+    async def find_element(self, 
+                          target_text: Optional[str] = None,
+                          target_index: Optional[int] = None,
+                          element_type: Optional[str] = None,
+                          context: str = "document",
+                          attributes: Optional[List[str]] = None) -> Optional[Locator]:
+        """
+        Find an element using smart selector strategies.
         
+        Args:
+            target_text: Text content to match
+            target_index: Index of the element (1-based)
+            element_type: Type of element to look for (e.g., 'link', 'button')
+            context: Context to search in (e.g., 'search-results', 'navigation')
+            attributes: List of attributes to include in element analysis
+            
+        Returns:
+            Playwright Locator for the element if found, None otherwise
+        """
+        selector = await self.find_best_selector(
+            target_text=target_text,
+            target_index=target_index,
+            element_type=element_type,
+            context=context,
+            attributes=attributes
+        )
+        
+        if not selector:
+            return None
+            
+        return self.page.locator(selector)
+    
     async def find_best_selector(self, 
                                target_text: Optional[str] = None,
                                target_index: Optional[int] = None,
@@ -26,13 +58,18 @@ class SmartSelector:
             target_index: Index of the element (1-based)
             element_type: Type of element to look for (e.g., 'link', 'button')
             context: Context to search in (e.g., 'search-results', 'navigation')
+            attributes: List of attributes to include in element analysis
             
         Returns:
             Most reliable CSS selector for the element
         """
         # Get candidate elements based on initial criteria
         candidates = await self._find_candidate_elements(
-            target_text, target_index, element_type, context, attributes
+            target_text=target_text,
+            target_index=target_index,
+            element_type=element_type,
+            context=context,
+            attributes=attributes
         )
         
         if not candidates:
@@ -49,7 +86,7 @@ class SmartSelector:
         best_selector = await self._find_most_reliable_selector(selectors)
         
         return best_selector
-        
+    
     async def _find_candidate_elements(self,
                                      target_text: Optional[str] = None,
                                      target_index: Optional[int] = None,
@@ -90,14 +127,20 @@ class SmartSelector:
                     if (params.element_type === 'link' && el.tagName !== 'A') continue;
                     if (params.element_type === 'button' && !isClickable) continue;
                     
+                    const attrs = {};
+                    if (params.attributes) {
+                        for (const attr of el.attributes) {
+                            if (params.attributes.includes(attr.name)) {
+                                attrs[attr.name] = attr.value;
+                            }
+                        }
+                    }
+                    
                     matches.push({
                         tag: el.tagName.toLowerCase(),
                         id: el.id,
                         classes: Array.from(el.classList),
-                        attributes: Object.fromEntries(
-                            Array.from(el.attributes)
-                                .map(attr => [attr.name, attr.value])
-                        ),
+                        attributes: attrs,
                         text: text,
                         isClickable,
                         position: el.getBoundingClientRect().toJSON()
@@ -108,7 +151,11 @@ class SmartSelector:
             
             return findMatchingElements();
         }
-        """, {"target_text": target_text, "element_type": element_type})
+        """, {
+            "target_text": target_text,
+            "element_type": element_type,
+            "attributes": attributes or []
+        })
         
         # Filter by index if specified
         if target_index is not None and elements:
@@ -231,35 +278,3 @@ class SmartSelector:
         except Exception as e:
             logger.debug(f"Scoring failed for {selector}: {str(e)}")
             return 0
-            
-    async def find_element(self, 
-                          target_text: Optional[str] = None,
-                          target_index: Optional[int] = None,
-                          element_type: Optional[str] = None,
-                          context: str = "document",
-                          attributes: Optional[List[str]] = None) -> Optional[Locator]:
-        """
-        Find an element using smart selector strategies.
-        
-        Args:
-            target_text: Text content to match
-            target_index: Index of the element (1-based)
-            element_type: Type of element to look for (e.g., 'link', 'button')
-            context: Context to search in (e.g., 'search-results', 'navigation')
-            attributes: List of attributes to include in element analysis
-            
-        Returns:
-            Playwright Locator for the element if found, None otherwise
-        """
-        selector = await self.find_best_selector(
-            target_text=target_text,
-            target_index=target_index,
-            element_type=element_type,
-            context=context,
-            attributes=attributes
-        )
-        
-        if not selector:
-            return None
-            
-        return self.page.locator(selector)
