@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Dict, Any, Optional, List, Literal
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.exceptions import McpError
@@ -56,6 +56,7 @@ class GoogleSearchParams:
     click_text: Optional[str] = None
     ensure_visible: bool = True
     timeout: int = 10000
+    allowed_types: List[str] = field(default_factory=lambda: ['organic'])
 
 # Initialize controllers
 browser_controller = BrowserController()

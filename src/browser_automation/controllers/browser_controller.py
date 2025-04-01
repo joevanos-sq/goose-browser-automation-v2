@@ -320,13 +320,45 @@ class BrowserController:
         selector = GoogleSelectors.get_result_by_index(index)
         return await self.click_element(selector, ensure_visible)
         
-    async def click_result_by_text(self, text: str, ensure_visible: bool = True) -> bool:
+    async def verify_result_type(self, element, allowed_types: List[str] = ['organic']) -> bool:
+        """
+        Verify if a result element is of an allowed type.
+        
+        Args:
+            element: Playwright element to verify
+            allowed_types: List of allowed result types
+            
+        Returns:
+            bool: True if result is of an allowed type
+        """
+        try:
+            # Get element classes
+            class_attr = await element.get_attribute('class')
+            if not class_attr:
+                return False
+                
+            # Determine result type
+            result_type = GoogleSelectors.get_result_type(class_attr)
+            
+            # Check if type is allowed
+            is_allowed = result_type in allowed_types
+            if not is_allowed:
+                logger.warning(f"Skipping result of type '{result_type}' (not in allowed types: {allowed_types})")
+            
+            return is_allowed
+            
+        except Exception as e:
+            logger.error(f"Failed to verify result type: {str(e)}")
+            return False
+            
+    async def click_result_by_text(self, text: str, ensure_visible: bool = True, allowed_types: List[str] = ['organic']) -> bool:
         """
         Click search result containing specified text using smart selection.
         
         Args:
             text: Text to match in result title
             ensure_visible: Whether to ensure result is in viewport
+            allowed_types: List of allowed result types to click
             
         Returns:
             bool: True if click successful, False otherwise
@@ -344,6 +376,10 @@ class BrowserController:
         
         if not element:
             logger.error(f"Could not find result containing text: {text}")
+            return False
+            
+        # Verify result type before clicking
+        if not await self.verify_result_type(element, allowed_types):
             return False
             
         try:
