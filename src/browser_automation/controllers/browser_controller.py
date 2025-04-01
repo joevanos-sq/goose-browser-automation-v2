@@ -39,7 +39,6 @@ class BrowserController:
             self._playwright = await async_playwright().start()
             
             # Launch Chromium with specific options
-            # Launch with anti-detection measures
             self._browser = await self._playwright.chromium.launch(
                 channel="chrome-canary",
                 headless=headless,
@@ -102,7 +101,7 @@ class BrowserController:
         except Exception as e:
             logger.error(f"Navigation failed: {str(e)}")
             return False
-
+            
     async def wait_for_element(self, selector: str, timeout: int = 5000) -> bool:
         """
         Wait for element to be visible and ready.
@@ -165,6 +164,55 @@ class BrowserController:
             logger.error(f"Failed to type text: {str(e)}")
             return False
             
+    async def click_with_retry(self, selector: str, ensure_visible: bool = True, max_attempts: int = 3, delay: int = 500) -> bool:
+        """
+        Click element with retry logic for better reliability.
+        
+        Args:
+            selector: Element selector to click
+            ensure_visible: Whether to ensure element is in viewport
+            max_attempts: Maximum number of retry attempts
+            delay: Delay between retries in milliseconds
+            
+        Returns:
+            bool: True if click successful, False otherwise
+            
+        Raises:
+            ValueError: If browser not launched
+        """
+        if not self._page:
+            raise ValueError("Browser not launched")
+            
+        for attempt in range(max_attempts):
+            try:
+                # Get the element using locator (more reliable than wait_for_selector)
+                element = self._page.locator(selector)
+                
+                # Wait for element to be visible
+                await element.wait_for(state='visible', timeout=5000)
+                
+                # Ensure element is in viewport if requested
+                if ensure_visible:
+                    await element.scroll_into_view_if_needed()
+                    await self._page.wait_for_timeout(100)  # Small delay after scroll
+                
+                # Attempt click
+                await element.click()
+                logger.info(f"Successfully clicked {selector} on attempt {attempt + 1}")
+                return True
+                
+            except Exception as e:
+                logger.debug(f"Click attempt {attempt + 1} failed: {str(e)}")
+                if attempt == max_attempts - 1:
+                    logger.error(f"Failed to click {selector} after {max_attempts} attempts")
+                    return False
+                    
+                # Ensure page is still available before waiting
+                if self._page:
+                    await self._page.wait_for_timeout(delay)
+                
+        return False
+            
     async def click_element(self, selector: str, ensure_visible: bool = True) -> bool:
         """
         Click on an element with improved reliability.
@@ -183,26 +231,13 @@ class BrowserController:
             if not self._page:
                 raise ValueError("Browser not launched")
                 
-            # Wait for element first
-            await self.wait_for_element(selector)
-            
-            # Get the element
-            element = self._page.locator(selector)
-            
-            # Ensure element is in viewport if requested
-            if ensure_visible:
-                await element.scroll_into_view_if_needed()
-                await self._page.wait_for_timeout(500)  # Small delay after scroll
-                
-            # Click the element
-            await element.click()
-            logger.info(f"Successfully clicked {selector}")
-            return True
+            # Use the new retry logic while preserving the ensure_visible parameter
+            return await self.click_with_retry(selector, ensure_visible=ensure_visible)
             
         except Exception as e:
             logger.error(f"Failed to click element: {str(e)}")
             return False
-
+            
     async def wait_for_search_results(self, timeout: int = 5000) -> bool:
         """
         Wait for Google search results to be visible and interactive.
