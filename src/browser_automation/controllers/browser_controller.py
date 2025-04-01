@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import logging
-import random
-from typing import Dict, Any, Optional, Literal, List
-from playwright.async_api import async_playwright, Page, Browser, Playwright
+import time
+from typing import Dict, Any, Optional, Literal, List, cast
+from playwright.async_api import async_playwright, Page, Browser, Playwright, Locator
 from browser_automation.utils.selectors import GoogleSelectors
 from browser_automation.utils.inspector import ElementInspector
 from browser_automation.utils.smart_selector import SmartSelector
@@ -24,408 +24,179 @@ class BrowserController:
     def page(self) -> Optional[Page]:
         """Get current page."""
         return self._page
-        
+
+    def _ensure_page(self) -> Page:
+        """Ensure page exists and return it typed correctly."""
+        if not self._page:
+            raise ValueError("Browser not launched")
+        return cast(Page, self._page)
+
     async def launch(self, headless: bool = False) -> bool:
-        """
-        Launch Chromium browser.
-        
-        Args:
-            headless: Whether to run browser in headless mode
-            
-        Returns:
-            bool: True if launch successful, False otherwise
-        """
+        """Launch browser with optimized settings."""
         try:
+            start_time = time.time()
+            
             self._playwright = await async_playwright().start()
             
-            # Launch Chromium with specific options
+            # Launch with minimal options
             self._browser = await self._playwright.chromium.launch(
                 channel="chrome-canary",
                 headless=headless,
                 args=[
                     '--disable-blink-features=AutomationControlled',
-                    '--disable-features=IsolateOrigins,site-per-process',
-                    '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                    '--disable-features=IsolateOrigins',
                 ]
             )
             
+            # Create page with minimal settings
             self._page = await self._browser.new_page()
-            logger.info("Browser launched successfully")
+            
+            # Block image loading but allow CSS for layout
+            await self._page.route("**/*.{png,jpg,jpeg,svg,gif}", lambda route: route.abort())
+            await self._page.route("**/*.css", lambda route: route.continue_())
+            
+            logger.info(f"Browser launch took {(time.time() - start_time) * 1000:.0f}ms")
             return True
             
         except Exception as e:
             logger.error(f"Failed to launch browser: {str(e)}")
             return False
-            
-    async def navigate(self, url: str, wait_for: Literal['load', 'domcontentloaded', 'networkidle'] = 'networkidle') -> bool:
-        """
-        Navigate to URL and wait for specified state.
-        
-        Args:
-            url: URL to navigate to
-            wait_for: State to wait for after navigation
-            
-        Returns:
-            bool: True if navigation successful, False otherwise
-            
-        Raises:
-            ValueError: If browser not launched
-        """
+
+    async def navigate(self, url: str, wait_for: Literal['load', 'domcontentloaded', 'networkidle'] = 'load') -> bool:
+        """Navigate to URL with smart navigation optimizations."""
         try:
-            if not self._page:
-                raise ValueError("Browser not launched")
+            page = self._ensure_page()
+            start_time = time.time()
+            
+            # Smart navigation: Check if we're already on the page
+            current_url = page.url
+            logger.info(f"Current URL: {current_url}")
+            logger.info(f"Target URL: {url}")
+            
+            # Strip hash/query params for base URL comparison
+            current_base = current_url.split('#')[0].split('?')[0]
+            target_base = url.split('#')[0].split('?')[0]
+            
+            if current_url == url:
+                logger.info("✨ Smart Navigation: Already on requested URL, skipping navigation")
+                return True
                 
-            # Set human-like viewport and window size
-            await self._page.set_viewport_size({"width": 1280, "height": 800})
+            if current_base == target_base:
+                # Same page, different anchor/params - use client-side navigation
+                logger.info("✨ Smart Navigation: Using client-side navigation")
+                if '#' in url:
+                    anchor = url.split('#')[1]
+                    logger.info(f"Updating hash to: #{anchor}")
+                    await page.evaluate(f"window.location.hash = '{anchor}'")
+                elif '?' in url:
+                    query = url.split('?')[1]
+                    logger.info(f"Updating query to: ?{query}")
+                    await page.evaluate(f"window.location.search = '{query}'")
+                await page.wait_for_timeout(100)  # Brief delay for client-side update
+                logger.info(f"✨ Client-side navigation completed in {(time.time() - start_time) * 1000:.0f}ms")
+                return True
             
-            # Add human-like headers
-            await self._page.set_extra_http_headers({
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-                "Sec-Ch-Ua-Mobile": "?0",
-                "Sec-Ch-Ua-Platform": '"macOS"',
-                "Upgrade-Insecure-Requests": "1"
-            })
+            # Full navigation needed
+            logger.info("Performing full page navigation")
+            await page.goto(url, wait_until='commit', timeout=5000)
             
-            # Navigate with a more natural timing
-            await self._page.goto(url, wait_until=wait_for, timeout=30000)
-            await self._page.wait_for_load_state(wait_for)
+            # Set viewport size asynchronously
+            viewport_task = page.set_viewport_size({"width": 1280, "height": 800})
             
-            # Add a small random delay to simulate human behavior
-            await self._page.wait_for_timeout(1000 + (random.random() * 1000))
+            # Wait for critical content
+            content_task = page.wait_for_load_state(wait_for, timeout=5000)
             
-            logger.info(f"Successfully navigated to {url}")
+            # Run tasks concurrently
+            await viewport_task
+            await content_task
+            
+            logger.info(f"Full navigation completed in {(time.time() - start_time) * 1000:.0f}ms")
             return True
             
         except Exception as e:
             logger.error(f"Navigation failed: {str(e)}")
             return False
-            
-    async def wait_for_element(self, selector: str, timeout: int = 5000) -> bool:
-        """
-        Wait for element to be visible and ready.
-        
-        Args:
-            selector: Element selector
-            timeout: Maximum time to wait in milliseconds
-            
-        Returns:
-            bool: True if element found, False if timeout
-        """
-        try:
-            if not self._page:
-                raise ValueError("Browser not launched")
-                
-            await self._page.wait_for_selector(selector, 
-                state='visible',
-                timeout=timeout
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Wait for element failed: {str(e)}")
-            return False
-            
-    async def type_text(self, selector: str, text: str, submit: bool = False) -> bool:
-        """
-        Type text into an element with optional submit.
-        
-        Args:
-            selector: Element selector
-            text: Text to type
-            submit: Whether to press Enter after typing
-            
-        Returns:
-            bool: True if text entered successfully, False otherwise
-            
-        Raises:
-            ValueError: If browser not launched
-        """
-        try:
-            if not self._page:
-                raise ValueError("Browser not launched")
 
-            # Wait for element to be ready    
-            await self.wait_for_element(selector)
-            
-            # Type the text
-            element = self._page.locator(selector)
-            await element.fill(text)
-            
-            if submit:
-                await element.press('Enter')
-                # Wait for navigation if submitting
-                await self._page.wait_for_load_state('networkidle')
-                
-            logger.info(f"Successfully typed text into {selector}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to type text: {str(e)}")
-            return False
-            
-    async def click_with_retry(self, selector: str, ensure_visible: bool = True, max_attempts: int = 3, delay: int = 500) -> bool:
+    async def click_with_retry(self, selector: str, max_attempts: int = 2, delay: int = 50, ensure_visible: bool = True) -> bool:
         """
-        Click element with retry logic for better reliability.
+        Click element with minimal retry.
         
         Args:
             selector: Element selector to click
-            ensure_visible: Whether to ensure element is in viewport
             max_attempts: Maximum number of retry attempts
             delay: Delay between retries in milliseconds
+            ensure_visible: Whether to ensure element is visible before clicking
             
         Returns:
             bool: True if click successful, False otherwise
-            
-        Raises:
-            ValueError: If browser not launched
         """
-        if not self._page:
-            raise ValueError("Browser not launched")
+        page = self._ensure_page()
+        start_time = time.time()
+        
+        try:
+            # Get the element using locator
+            element = page.locator(selector)
             
-        for attempt in range(max_attempts):
+            # Try immediate click first
             try:
-                # Get the element using locator (more reliable than wait_for_selector)
-                element = self._page.locator(selector)
-                
-                # Wait for element to be visible
-                await element.wait_for(state='visible', timeout=5000)
-                
-                # Ensure element is in viewport if requested
                 if ensure_visible:
                     await element.scroll_into_view_if_needed()
-                    await self._page.wait_for_timeout(100)  # Small delay after scroll
-                
-                # Attempt click
-                await element.click()
-                logger.info(f"Successfully clicked {selector} on attempt {attempt + 1}")
+                await element.click(timeout=1000)
+                logger.info(f"Click succeeded immediately in {(time.time() - start_time) * 1000:.0f}ms")
                 return True
-                
-            except Exception as e:
-                logger.debug(f"Click attempt {attempt + 1} failed: {str(e)}")
-                if attempt == max_attempts - 1:
-                    logger.error(f"Failed to click {selector} after {max_attempts} attempts")
-                    return False
-                    
-                # Ensure page is still available before waiting
-                if self._page:
-                    await self._page.wait_for_timeout(delay)
-                
-        return False
+            except:
+                pass  # Try retry logic if immediate click fails
             
+            # Retry logic with minimal delay
+            for attempt in range(max_attempts):
+                try:
+                    await element.wait_for(state='visible', timeout=1000)
+                    if ensure_visible:
+                        await element.scroll_into_view_if_needed()
+                    await element.click(timeout=1000)
+                    logger.info(f"Click succeeded on attempt {attempt + 1} in {(time.time() - start_time) * 1000:.0f}ms")
+                    return True
+                except Exception as e:
+                    if attempt == max_attempts - 1:
+                        logger.error(f"Click failed after {max_attempts} attempts: {str(e)}")
+                        return False
+                    await page.wait_for_timeout(delay)
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Click operation failed: {str(e)}")
+            return False
+
     async def click_element(self, selector: str, ensure_visible: bool = True) -> bool:
-        """
-        Click on an element with improved reliability.
-        
-        Args:
-            selector: Element selector
-            ensure_visible: Whether to ensure element is in viewport
-            
-        Returns:
-            bool: True if click successful, False otherwise
-            
-        Raises:
-            ValueError: If browser not launched
-        """
+        """Click on an element."""
+        return await self.click_with_retry(selector, ensure_visible=ensure_visible)
+
+    async def type_text(self, selector: str, text: str, submit: bool = False) -> bool:
+        """Type text into an element with optional submit."""
+        page = self._ensure_page()
         try:
-            if not self._page:
-                raise ValueError("Browser not launched")
-                
-            # Use the new retry logic while preserving the ensure_visible parameter
-            return await self.click_with_retry(selector, ensure_visible=ensure_visible)
-            
-        except Exception as e:
-            logger.error(f"Failed to click element: {str(e)}")
-            return False
-            
-    async def wait_for_search_results(self, timeout: int = 5000) -> bool:
-        """
-        Wait for Google search results to be visible and interactive.
-        
-        Args:
-            timeout: Maximum time to wait in milliseconds
-            
-        Returns:
-            bool: True if results are ready, False otherwise
-        """
-        try:
-            if not self._page:
-                raise ValueError("Browser not launched")
-                
-            # Wait for main results container
-            await self.wait_for_element(GoogleSelectors.SEARCH['search_results'], timeout)
-            
-            # Wait for at least one organic result
-            await self.wait_for_element(GoogleSelectors.SEARCH['organic_results'], timeout)
-            
+            element = page.locator(selector)
+            await element.fill(text)
+            if submit:
+                await element.press('Enter')
+                await page.wait_for_load_state('networkidle')
             return True
-            
         except Exception as e:
-            logger.error(f"Failed waiting for search results: {str(e)}")
+            logger.error(f"Failed to type text: {str(e)}")
             return False
-            
-    async def get_result_count(self) -> int:
-        """
-        Get number of search results on current page.
-        
-        Returns:
-            int: Number of results found
-        """
-        try:
-            if not self._page:
-                raise ValueError("Browser not launched")
-                
-            results = await self._page.query_selector_all(GoogleSelectors.SEARCH['organic_results'])
-            return len(results)
-            
-        except Exception as e:
-            logger.error(f"Failed to get result count: {str(e)}")
-            return 0
-            
-    async def get_result_texts(self) -> List[str]:
-        """
-        Get list of result titles on current page.
-        
-        Returns:
-            List[str]: List of result titles
-        """
-        try:
-            if not self._page:
-                raise ValueError("Browser not launched")
-                
-            titles = []
-            elements = await self._page.query_selector_all(GoogleSelectors.SEARCH['result_titles'])
-            
-            for element in elements:
-                title = await element.inner_text()
-                titles.append(title)
-                
-            return titles
-            
-        except Exception as e:
-            logger.error(f"Failed to get result texts: {str(e)}")
-            return []
-            
-    async def click_result_by_index(self, index: int, ensure_visible: bool = True) -> bool:
-        """
-        Click search result by position (1-based index).
-        
-        Args:
-            index: Position of result to click (1-based)
-            ensure_visible: Whether to ensure result is in viewport
-            
-        Returns:
-            bool: True if click successful, False otherwise
-        """
-        selector = GoogleSelectors.get_result_by_index(index)
-        return await self.click_element(selector, ensure_visible)
-        
-    async def verify_result_type(self, element, allowed_types: List[str] = ['organic']) -> bool:
-        """
-        Verify if a result element is of an allowed type.
-        
-        Args:
-            element: Playwright element to verify
-            allowed_types: List of allowed result types
-            
-        Returns:
-            bool: True if result is of an allowed type
-        """
-        try:
-            # Get element classes
-            class_attr = await element.get_attribute('class')
-            if not class_attr:
-                return False
-                
-            # Determine result type
-            result_type = GoogleSelectors.get_result_type(class_attr)
-            
-            # Check if type is allowed
-            is_allowed = result_type in allowed_types
-            if not is_allowed:
-                logger.warning(f"Skipping result of type '{result_type}' (not in allowed types: {allowed_types})")
-            
-            return is_allowed
-            
-        except Exception as e:
-            logger.error(f"Failed to verify result type: {str(e)}")
-            return False
-            
-    async def click_result_by_text(self, text: str, ensure_visible: bool = True, allowed_types: List[str] = ['organic']) -> bool:
-        """
-        Click search result containing specified text using smart selection.
-        
-        Args:
-            text: Text to match in result title
-            ensure_visible: Whether to ensure result is in viewport
-            allowed_types: List of allowed result types to click
-            
-        Returns:
-            bool: True if click successful, False otherwise
-        """
-        if not self._page:
-            raise ValueError("Browser not launched")
-            
-        smart_selector = SmartSelector(self._page)
-        element = await smart_selector.find_element(
-            target_text=text,
-            element_type="link",
-            context="search-results",
-            attributes=["href", "class", "role"]
-        )
-        
-        if not element:
-            logger.error(f"Could not find result containing text: {text}")
-            return False
-            
-        # Verify result type before clicking
-        if not await self.verify_result_type(element, allowed_types):
-            return False
-            
-        try:
-            if ensure_visible:
-                await element.scroll_into_view_if_needed()
-                await self._page.wait_for_timeout(500)  # Small delay after scroll
-                
-            await element.click()
-            logger.info(f"Successfully clicked result containing: {text}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to click result: {str(e)}")
-            return False
-            
+
     async def inspect_page(self, 
-                      selector: str = "body",
-                      max_elements: int = 100,
-                      element_types: Optional[List[str]] = None,
-                      attributes: Optional[List[str]] = None,
-                      max_depth: int = 3,
-                      mode: Literal['all', 'clickable', 'form'] = 'all') -> Dict[str, Any]:
-        """
-        Get current page state with configurable inspection options.
-        
-        Args:
-            selector: Element selector to inspect
-            max_elements: Maximum number of elements to return
-            element_types: List of element types to include (e.g. ['a', 'button'])
-            attributes: List of attributes to include in results
-            max_depth: Maximum depth to traverse in DOM tree
-            mode: Inspection mode - 'all' for full tree, 'clickable' for interactive elements,
-                 or 'form' for form elements
-            
-        Returns:
-            Dict containing filtered page state information
-            
-        Raises:
-            ValueError: If browser not launched
-        """
-        if not self._page:
-            raise ValueError("Browser not launched")
-            
+                         selector: str = "body",
+                         max_elements: int = 100,
+                         element_types: Optional[List[str]] = None,
+                         attributes: Optional[List[str]] = None,
+                         max_depth: int = 3,
+                         mode: Literal['all', 'clickable', 'form'] = 'all') -> Dict[str, Any]:
+        """Get page state with configurable inspection options."""
+        page = self._ensure_page()
+        inspector = ElementInspector(page)
         try:
-            inspector = ElementInspector(self._page)
-            
             if mode == 'clickable':
                 return await inspector.find_clickable_elements(max_elements)
             elif mode == 'form':
@@ -439,17 +210,47 @@ class BrowserController:
                     max_depth=max_depth
                 )
         except Exception as e:
-            logger.error(f"Failed to inspect page: {str(e)}")
+            logger.error(f"Page inspection failed: {str(e)}")
             return {"error": str(e)}
-            
-    async def close(self) -> None:
+
+    async def click_result_by_text(self, text: str, ensure_visible: bool = True, allowed_types: List[str] = ['organic']) -> bool:
         """
-        Close browser and cleanup resources.
+        Click result containing specified text.
         
-        Raises:
-            Exception: If cleanup fails
+        Args:
+            text: Text to match in result
+            ensure_visible: Whether to ensure result is visible
+            allowed_types: List of allowed result types (default: ['organic'])
+            
+        Returns:
+            bool: True if click successful, False otherwise
         """
+        page = self._ensure_page()
+        smart_selector = SmartSelector(page)
         try:
+            element = await smart_selector.find_element(
+                target_text=text,
+                element_type="link",
+                context="search-results",
+                attributes=["href", "class", "role"]
+            )
+            if not element:
+                logger.error(f"Could not find result containing text: {text}")
+                return False
+            
+            if ensure_visible:
+                await element.scroll_into_view_if_needed()
+            await element.click()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to click result: {str(e)}")
+            return False
+
+    async def close(self) -> None:
+        """Close browser and cleanup resources."""
+        try:
+            start_time = time.time()
+            
             if self._page:
                 await self._page.close()
                 self._page = None
@@ -462,7 +263,7 @@ class BrowserController:
                 await self._playwright.stop()
                 self._playwright = None
                 
-            logger.info("Browser closed successfully")
+            logger.info(f"Browser cleanup took {(time.time() - start_time) * 1000:.0f}ms")
         except Exception as e:
             logger.error(f"Failed to close browser: {str(e)}")
             raise
