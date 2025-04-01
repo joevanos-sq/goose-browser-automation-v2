@@ -66,6 +66,9 @@ browser_automation/
 - Shadow DOM support
 - Frame handling
 - Wait mechanisms for page loads and network idle
+- Result type verification and filtering
+- Content type-aware interaction
+- Safe clicking with retry mechanism
 
 ### 3. Page Inspection
 - Multiple inspection modes:

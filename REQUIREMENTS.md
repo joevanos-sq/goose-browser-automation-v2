@@ -22,6 +22,9 @@
 - [x] Support iframes/frames
 - [x] Wait for page events
 - [x] Monitor network activity
+- [x] Result type verification
+- [x] Content type filtering
+- [x] Safe clicking with retries
 
 ### 1.4 Page Inspection
 - [x] Multiple inspection modes

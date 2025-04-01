@@ -7,12 +7,14 @@ A browser automation extension for Goose that provides programmatic control of w
 - Launch and manage browser instances
 - Navigate web pages
 - Interact with page elements (click, type)
-- Enhanced Google search functionality
+- Enhanced Google search functionality with result type verification
 - Advanced page inspection capabilities
 - Support for both visible and headless browsers
 - Automatic resource cleanup
-- Comprehensive error handling
+- Comprehensive error handling with retry mechanism
 - Full async support
+- Content type-aware interaction
+- Safe clicking with configurable retries
 
 ## Installation
 
@@ -44,13 +46,15 @@ params = {
 ```
 
 ### google_search
-Perform a Google search with enhanced result handling
+Perform a Google search with enhanced result handling and type verification
 ```python
 params = {
     "query": "search term",          # Required: Search query
     "click_index": 1,               # Optional: Click nth result (1-based)
     "click_text": "Example.com",    # Optional: Click result containing text
-    "ensure_visible": True          # Optional: Ensure result visible before click
+    "ensure_visible": True,         # Optional: Ensure result visible before click
+    "allowed_types": ["organic"],   # Optional: List of allowed result types
+    "timeout": 10000               # Optional: Maximum wait time in milliseconds
 }
 
 # Returns:
@@ -60,6 +64,13 @@ params = {
     "clicked": True,                # Whether a result was clicked
     "results": ["Title 1", ...]     # List of result titles
 }
+```
+
+Available result types:
+- "organic": Standard search results
+- "featured": Featured snippets
+- "knowledge": Knowledge panel results
+- "advertisement": Sponsored results
 ```
 
 ### navigate_to
